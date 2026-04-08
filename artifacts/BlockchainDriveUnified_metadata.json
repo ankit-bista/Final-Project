@@ -1,0 +1,527 @@
+{
+	"compiler": {
+		"version": "0.8.20+commit.a1b79de6"
+	},
+	"language": "Solidity",
+	"output": {
+		"abi": [
+			{
+				"inputs": [],
+				"stateMutability": "nonpayable",
+				"type": "constructor"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": false,
+						"internalType": "string",
+						"name": "fileId",
+						"type": "string"
+					},
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					}
+				],
+				"name": "AccessRevoked",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "uploader",
+						"type": "address"
+					},
+					{
+						"indexed": false,
+						"internalType": "string",
+						"name": "fileId",
+						"type": "string"
+					},
+					{
+						"indexed": false,
+						"internalType": "string",
+						"name": "customHash",
+						"type": "string"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "sizeBytes",
+						"type": "uint256"
+					}
+				],
+				"name": "FileRecorded",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": false,
+						"internalType": "string",
+						"name": "fileId",
+						"type": "string"
+					},
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "recipient",
+						"type": "address"
+					},
+					{
+						"indexed": false,
+						"internalType": "string",
+						"name": "role",
+						"type": "string"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "expiresAt",
+						"type": "uint256"
+					}
+				],
+				"name": "FileShared",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": false,
+						"internalType": "string",
+						"name": "poolName",
+						"type": "string"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "bytesAmount",
+						"type": "uint256"
+					}
+				],
+				"name": "PoolAllocated",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "refundedBytes",
+						"type": "uint256"
+					}
+				],
+				"name": "QuotaRefunded",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "usedBytes",
+						"type": "uint256"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "quotaLimitBytes",
+						"type": "uint256"
+					}
+				],
+				"name": "QuotaUpdated",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": false,
+						"internalType": "string",
+						"name": "poolName",
+						"type": "string"
+					},
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "bytesAmount",
+						"type": "uint256"
+					}
+				],
+				"name": "UserQuotaAllocated",
+				"type": "event"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "string",
+						"name": "poolName",
+						"type": "string"
+					},
+					{
+						"internalType": "uint256",
+						"name": "bytesAmount",
+						"type": "uint256"
+					}
+				],
+				"name": "allocatePool",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "string",
+						"name": "poolName",
+						"type": "string"
+					},
+					{
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					},
+					{
+						"internalType": "uint256",
+						"name": "bytesAmount",
+						"type": "uint256"
+					}
+				],
+				"name": "allocateUserQuota",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					},
+					{
+						"internalType": "string",
+						"name": "fileId",
+						"type": "string"
+					},
+					{
+						"internalType": "string",
+						"name": "action",
+						"type": "string"
+					}
+				],
+				"name": "canUserAccessFile",
+				"outputs": [
+					{
+						"internalType": "bool",
+						"name": "",
+						"type": "bool"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					}
+				],
+				"name": "getQuotaStats",
+				"outputs": [
+					{
+						"internalType": "string",
+						"name": "tier",
+						"type": "string"
+					},
+					{
+						"internalType": "uint256",
+						"name": "quotaLimitBytes",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "usedBytes",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "remainingBytes",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint8",
+						"name": "usagePercent",
+						"type": "uint8"
+					},
+					{
+						"internalType": "uint256",
+						"name": "filesUploaded",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "maxFiles",
+						"type": "uint256"
+					},
+					{
+						"internalType": "bool",
+						"name": "isActive",
+						"type": "bool"
+					},
+					{
+						"internalType": "uint256",
+						"name": "lastUpdated",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "owner",
+				"outputs": [
+					{
+						"internalType": "address",
+						"name": "",
+						"type": "address"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "",
+						"type": "address"
+					}
+				],
+				"name": "quotas",
+				"outputs": [
+					{
+						"internalType": "string",
+						"name": "tier",
+						"type": "string"
+					},
+					{
+						"internalType": "uint256",
+						"name": "quotaLimitBytes",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "usedBytes",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint8",
+						"name": "usagePercent",
+						"type": "uint8"
+					},
+					{
+						"internalType": "uint256",
+						"name": "filesUploaded",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "maxFiles",
+						"type": "uint256"
+					},
+					{
+						"internalType": "bool",
+						"name": "isActive",
+						"type": "bool"
+					},
+					{
+						"internalType": "uint256",
+						"name": "lastUpdated",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					},
+					{
+						"internalType": "string",
+						"name": "fileId",
+						"type": "string"
+					},
+					{
+						"internalType": "string",
+						"name": "customHash",
+						"type": "string"
+					},
+					{
+						"internalType": "uint256",
+						"name": "sizeBytes",
+						"type": "uint256"
+					}
+				],
+				"name": "recordFile",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					},
+					{
+						"internalType": "uint256",
+						"name": "fileSizeBytes",
+						"type": "uint256"
+					}
+				],
+				"name": "refundQuota",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "string",
+						"name": "fileId",
+						"type": "string"
+					},
+					{
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					}
+				],
+				"name": "revokeAccess",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "string",
+						"name": "fileId",
+						"type": "string"
+					},
+					{
+						"internalType": "address",
+						"name": "recipientAddress",
+						"type": "address"
+					},
+					{
+						"internalType": "string",
+						"name": "role",
+						"type": "string"
+					},
+					{
+						"internalType": "uint256",
+						"name": "expiryDays",
+						"type": "uint256"
+					}
+				],
+				"name": "shareFile",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "userAddress",
+						"type": "address"
+					},
+					{
+						"internalType": "uint256",
+						"name": "fileSizeBytes",
+						"type": "uint256"
+					}
+				],
+				"name": "updateQuotaAfterUpload",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			}
+		],
+		"devdoc": {
+			"kind": "dev",
+			"methods": {},
+			"version": 1
+		},
+		"userdoc": {
+			"kind": "user",
+			"methods": {},
+			"notice": "Remix-ready unified contract for this project. It combines: - Quota/storage functions expected by STORAGE_ALLOC_CONTRACT ABI - File/permission functions expected by DRIVE_V2_CONTRACT ABI You can deploy ONE contract in Remix and set BOTH env vars to this address: - STORAGE_ALLOC_CONTRACT=<this_address> - DRIVE_V2_CONTRACT=<this_address>",
+			"version": 1
+		}
+	},
+	"settings": {
+		"compilationTarget": {
+			"contracts/BlockchainDriveUnified.sol": "BlockchainDriveUnified"
+		},
+		"evmVersion": "shanghai",
+		"libraries": {},
+		"metadata": {
+			"bytecodeHash": "ipfs"
+		},
+		"optimizer": {
+			"enabled": false,
+			"runs": 200
+		},
+		"remappings": []
+	},
+	"sources": {
+		"contracts/BlockchainDriveUnified.sol": {
+			"keccak256": "0x5f3ea3815f20b8a829d02408b681f300175d42c1bade5db9a496d86e2bd112f4",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://ba5b51b41dddd7a1eb8c2f3f63a9b646db387a725903732fefefd01fe717a96b",
+				"dweb:/ipfs/QmXDXHEVUMCHS5HXU2S6XsSL41W3B59v2hR5p3EXJKjqF7"
+			]
+		}
+	},
+	"version": 1
+}

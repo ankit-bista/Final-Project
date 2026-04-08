@@ -1,0 +1,10 @@
+node_modules/
+front end/node_modules/
+front end/.next/
+.env
+.DS_Store
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
