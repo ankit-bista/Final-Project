@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { MainLayout } from '@/components/main-layout'
 import { BreadcrumbNav } from '@/components/breadcrumb-nav'
 import { FileGrid } from '@/components/file-grid'
@@ -19,6 +19,7 @@ import { useFileNavigation } from '@/hooks/use-file-navigation'
 import api from '@/lib/api'
 import { useWeb3 } from '@/context/web3-context'
 import { cacheFileKeyByCid, decryptBlobWithWallet, decryptWithMetaMask, encryptForPublicKey, getCachedFileKeyByCid } from '@/lib/file-crypto'
+import { sortFilesByTypeFromScratch } from '@/lib/file-sort'
 
 export default function DashboardPage() {
   const { isConnected, role, remainingBytes, account } = useWeb3()
@@ -68,9 +69,12 @@ export default function DashboardPage() {
     }
   }, [isConnected])
 
-  const filteredFiles = navigation.contents.filter((file) =>
-    file.name.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredFiles = useMemo(() => {
+    const searched = navigation.contents.filter((file) =>
+      file.name.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    return sortFilesByTypeFromScratch(searched)
+  }, [navigation.contents, searchQuery])
 
   const handleSelectFile = (id: string, selected: boolean = !selectedFiles.includes(id)) => {
     setSelectedFiles((prev) =>

@@ -14,6 +14,7 @@ import { FileCommentsPanel } from '@/components/file-comments-panel'
 import { MessageSquare } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { decryptBlobWithWallet } from '@/lib/file-crypto'
+import { sortFilesByTypeFromScratch } from '@/lib/file-sort'
 
 export default function SharedPage() {
   const { isConnected, account } = useWeb3()
@@ -90,11 +91,13 @@ export default function SharedPage() {
     driveShares.find((s) => s.ownerName === selectedShareOwner)?.role || 'viewer'
   const canDownload = selectedShareRole === 'editor'
 
-  const filteredFiles = files.filter((file) => {
-    const ownerOk = selectedShareOwner ? file.ownerName === selectedShareOwner : true
-    const searchOk = file.name.toLowerCase().includes(searchQuery.toLowerCase())
-    return ownerOk && searchOk
-  })
+  const filteredFiles = sortFilesByTypeFromScratch(
+    files.filter((file) => {
+      const ownerOk = selectedShareOwner ? file.ownerName === selectedShareOwner : true
+      const searchOk = file.name.toLowerCase().includes(searchQuery.toLowerCase())
+      return ownerOk && searchOk
+    })
+  )
 
   const handleSelectFile = (id: string) => {
     setSelectedFiles((prev) =>

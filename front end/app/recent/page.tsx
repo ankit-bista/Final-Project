@@ -13,6 +13,7 @@ import { Link2, MessageSquare } from 'lucide-react'
 import api from '@/lib/api'
 import { useWeb3 } from '@/context/web3-context'
 import { PublicLanding } from '@/components/public-landing'
+import { sortFilesByTypeFromScratch } from '@/lib/file-sort'
 
 export default function RecentPage() {
   const { isConnected, role } = useWeb3()
@@ -49,8 +50,8 @@ export default function RecentPage() {
     else setFiles([])
   }, [isConnected])
 
-  const filteredFiles = files.filter((file) =>
-    file.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredFiles = sortFilesByTypeFromScratch(
+    files.filter((file) => file.name.toLowerCase().includes(searchQuery.toLowerCase()))
   )
 
   const handleSelectFile = (id: string, selected: boolean = !selectedFiles.includes(id)) => {

@@ -17,6 +17,7 @@ import { Link2, MessageSquare, Upload } from 'lucide-react'
 import api from '@/lib/api'
 import { useWeb3 } from '@/context/web3-context'
 import { cacheFileKeyByCid, decryptBlobWithWallet, decryptWithMetaMask, encryptForPublicKey, getCachedFileKeyByCid } from '@/lib/file-crypto'
+import { sortFilesByTypeFromScratch } from '@/lib/file-sort'
 
 type Tab = 'my' | 'shared' | 'recent'
 
@@ -67,7 +68,10 @@ export default function CombinedPage() {
     return [...myFiles].sort((a, b) => Number(b.id) - Number(a.id))
   }, [tab, myFiles, sharedFiles])
 
-  const files = baseFiles.filter((f) => f.name.toLowerCase().includes(search.toLowerCase()))
+  const files = useMemo(
+    () => sortFilesByTypeFromScratch(baseFiles.filter((f) => f.name.toLowerCase().includes(search.toLowerCase()))),
+    [baseFiles, search]
+  )
 
   const handleView = async (id: string) => {
     const file = files.find((f) => f.id === id)
