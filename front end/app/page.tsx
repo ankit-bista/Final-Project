@@ -175,7 +175,7 @@ export default function DashboardPage() {
       let outName = file?.name || `file-${id}`
       if (crypto?.isEncrypted) {
         if (!account) throw new Error('Connect wallet first')
-        const decrypted = await decryptBlobWithWallet(account, contentRes.data as Blob, crypto.encryptedKey, crypto.iv)
+        const decrypted = await decryptBlobWithWallet(account, contentRes.data as Blob, crypto.encryptedKey, crypto.iv, file?.cid)
         outBlob = new Blob([decrypted], { type: crypto.originalMimeType || 'application/octet-stream' })
         outName = crypto.originalName || outName
       }

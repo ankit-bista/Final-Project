@@ -383,6 +383,7 @@ router.get("/files/:id/crypto", requireAuth, async (req, res) => {
       algorithm: file?.encryption?.algorithm || null,
       iv: file?.encryption?.iv || null,
       encryptedKey,
+      cid: file?.ipfs_hash || null,
       originalName: file?.encryption?.originalName || file.file_name,
       originalMimeType: file?.encryption?.originalMimeType || "application/octet-stream",
     });

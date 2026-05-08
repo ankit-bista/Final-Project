@@ -48,7 +48,7 @@ export function FileViewerModal({ open, onOpenChange, fileId, fileName, viewUrl 
 
         if (meta?.isEncrypted) {
           if (!account) throw new Error('Connect wallet to decrypt this file')
-          const decrypted = await decryptBlobWithWallet(account, blob, meta.encryptedKey, meta.iv)
+          const decrypted = await decryptBlobWithWallet(account, blob, meta.encryptedKey, meta.iv, meta.cid)
           const plainBlob = new Blob([decrypted], {
             type: meta.originalMimeType || 'application/octet-stream',
           })
