@@ -2,7 +2,7 @@ import express from "express";
 import { blockchainService } from "../services/blockchain.js";
 import { assignRoleAndQuota, ensureUserRoleSchema, isAdmin } from "../services/userRoleService.js";
 import { computeUsedBytes } from "../services/quotaService.js";
-import { deleteUserById, listUsersForAdmin } from "../services/models/userModel.js";
+import { deleteUserById, listUsersForAdmin } from "../services/models/index.js";
 
 const router = express.Router();
 ensureUserRoleSchema().catch(() => {});

@@ -12,7 +12,8 @@ import {
   updateUserNonceById,
   updateUserNonceByWallet,
   updateEncryptionPublicKey,
-} from "../services/models/userModel.js";
+} from "../services/models/index.js";
+import { ensureDefaultDriveForUser } from "../services/driveService.js";
 
 const router = express.Router();
 ensureUserRoleSchema().catch((err) => console.warn("Role schema init warning:", err?.message || err));
@@ -82,6 +83,9 @@ router.post("/auth/verify", async (req, res) => {
             }
 
             updateUserNonceById(user.id, null).catch(() => {});
+            ensureDefaultDriveForUser(user.id).catch((e) =>
+              console.warn("Default drive initialization warning:", e?.message || e)
+            );
 
             const needsUsername =
               !user.username ||

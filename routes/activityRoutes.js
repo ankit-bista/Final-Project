@@ -1,7 +1,6 @@
 import express from "express";
 import { resolveRequestUserId } from "../services/devTestAuth.js";
-import { listSharesByOwner } from "../services/models/shareModel.js";
-import { listRecentCommentsOnOwnedFiles } from "../services/models/commentModel.js";
+import { listSharesByOwner, listRecentCommentsOnOwnedFiles } from "../services/models/index.js";
 
 const router = express.Router();
 

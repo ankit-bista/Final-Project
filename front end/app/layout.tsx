@@ -10,12 +10,12 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'CloudVault - File Storage & Management',
+  title: 'SecureVault - File Storage & Management',
   description: 'A modern cloud storage platform for managing files, folders, and users',
   generator: 'v0.app',
   icons: {
-    icon: [{ url: '/icon.svg', type: 'image/svg+xml' }],
-    apple: '/icon.svg',
+    icon: [{ url: '/icon.png', type: 'image/png' }],
+    apple: '/icon.png',
   },
 }
 

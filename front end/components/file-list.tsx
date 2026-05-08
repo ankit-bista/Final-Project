@@ -3,7 +3,7 @@
 import { FileItem, formatBytes, formatDate } from '@/lib/mock-data'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
-import { Folder, File, Star, Share2, MoreVertical, Eye } from 'lucide-react'
+import { Folder, File, Star, Share2, MoreVertical, Eye, Copy } from 'lucide-react'
 import { BlockchainBadge, IPFSBadge } from '@/components/blockchain-badge'
 import { FileContextMenu } from '@/components/file-context-menu'
 import { cn } from '@/lib/utils'
@@ -31,6 +31,15 @@ export function FileList({
   onDownload,
   onView
 }: FileListProps) {
+  const copyTxHash = async (txHash?: string) => {
+    if (!txHash) return
+    try {
+      await navigator.clipboard.writeText(txHash)
+    } catch (err) {
+      console.error('Failed to copy tx hash', err)
+    }
+  }
+
   const handleRowDoubleClick = (file: FileItem) => {
     if (file.type === 'folder' && onFolderOpen) {
       onFolderOpen(file)
@@ -124,6 +133,20 @@ export function FileList({
                       size="sm"
                       showLabel={false}
                     />
+                  )}
+                  {file.txHash && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void copyTxHash(file.txHash)
+                      }}
+                      title="Copy transaction hash"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </Button>
                   )}
                 </div>
               </td>

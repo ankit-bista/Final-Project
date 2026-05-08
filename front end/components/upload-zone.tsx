@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Upload, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,7 +30,42 @@ export function UploadZone({
   const [isUploading, setIsUploading] = useState(false)
   const [filename, setFilename] = useState('')
   const [description, setDescription] = useState('')
+  const [drives, setDrives] = useState<any[]>([])
+  const [selectedDriveId, setSelectedDriveId] = useState<string>('')
+  const [folders, setFolders] = useState<any[]>([])
+  const [selectedFolderId, setSelectedFolderId] = useState<string>('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const loadDrives = async () => {
+    try {
+      const res = await api.get('/api/drives/me')
+      const rows = res.data || []
+      setDrives(rows)
+      const defaultDrive = rows.find((d: any) => d.personal) || rows[0]
+      if (defaultDrive?.id) setSelectedDriveId(String(defaultDrive.id))
+    } catch (err) {
+      console.error('Failed to load drives', err)
+    }
+  }
+
+  const loadFolders = async (driveId: string) => {
+    if (!driveId) return setFolders([])
+    try {
+      const res = await api.get(`/api/drives/${driveId}/folders`)
+      setFolders(res.data || [])
+    } catch (err) {
+      console.error('Failed to load folders', err)
+      setFolders([])
+    }
+  }
+
+  useEffect(() => {
+    if (isOpen) void loadDrives()
+  }, [isOpen])
+
+  useEffect(() => {
+    if (selectedDriveId) void loadFolders(selectedDriveId)
+  }, [selectedDriveId])
 
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault()
@@ -92,6 +127,8 @@ export function UploadZone({
         }
         
         formData.append('description', description);
+        formData.append('driveId', selectedDriveId || '');
+        formData.append('folderId', selectedFolderId || '');
         formData.append('encryption', JSON.stringify(encryption))
 
         const uploadRes = await api.post('/upload', formData);
@@ -189,6 +226,42 @@ export function UploadZone({
                 />
               </div>
             )}
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Drive</label>
+              <select
+                value={selectedDriveId}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setSelectedDriveId(value)
+                  setSelectedFolderId('')
+                  void loadFolders(value)
+                }}
+                className="w-full border border-input bg-background rounded-md px-3 py-2 text-sm"
+              >
+                {drives.map((drive) => (
+                  <option key={String(drive.id)} value={String(drive.id)}>
+                    {drive.name} {drive.personal ? '(Default)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Folder</label>
+              <select
+                value={selectedFolderId}
+                onChange={(e) => setSelectedFolderId(e.target.value)}
+                className="w-full border border-input bg-background rounded-md px-3 py-2 text-sm"
+              >
+                <option value="">Root</option>
+                {folders.map((folder) => (
+                  <option key={String(folder.id)} value={String(folder.id)}>
+                    {folder.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <div className="space-y-2">
               <label className="text-sm font-medium">Description</label>

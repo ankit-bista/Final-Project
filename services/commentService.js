@@ -1,5 +1,5 @@
 import { canUserAccessFileHybrid } from "./permissionService.js";
-import { createComment, listCommentsByFile } from "./models/commentModel.js";
+import { createComment, listCommentsByFile } from "./models/index.js";
 
 export async function ensureCommentsSchema() {
   // No-op on MongoDB; kept for boot compatibility.

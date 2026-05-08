@@ -1,15 +1,23 @@
 import { generateCustomHash } from "../utils/customHash.js";
 import { uploadToIPFS } from "./ipfsService.js";
 import { blockchainService } from "./blockchain.js";
-import { findUserById } from "./models/userModel.js";
 import {
+  findUserById,
   createFile,
   deleteFileByIdAndOwner,
-  getFileByIdAndOwner,
   listFilesByOwner,
   updateFileTxHash,
-} from "./models/fileModel.js";
-import { deleteSharesByFileId } from "./models/shareModel.js";
+  deleteSharesByFileId,
+  getFileById,
+  getFileByIdAndOwner,
+} from "./models/index.js";
+import {
+  addDriveUsage,
+  assertDriveCanUpload,
+  ensureDefaultDriveForUser,
+  recalculateDriveUsage,
+  requireDriveRole,
+} from "./driveService.js";
 
 /**
  * Get wallet address for a userId from the DB.
@@ -28,10 +36,17 @@ export async function getWalletAddress(userId) {
 /**
  * Upload a file to IPFS and record it in the database.
  */
-export async function uploadAndRecordFile(userId, file, customFilename, description, encryption = null) {
+export async function uploadAndRecordFile(userId, file, customFilename, description, encryption = null, options = {}) {
   const newSize = file.size || 0;
   const walletAddress = await getWalletAddress(userId);
   const enforceQuota = process.env.ENFORCE_QUOTA_ON_UPLOAD === "true";
+  const defaultDrive = await ensureDefaultDriveForUser(userId);
+  const targetDriveId = Number(options?.driveId || defaultDrive.id);
+  const targetFolderId = options?.folderId != null && options?.folderId !== ""
+    ? Number(options.folderId)
+    : null;
+
+  await assertDriveCanUpload(targetDriveId, userId, newSize);
 
   // 1. Check quota on blockchain
   try {
@@ -64,7 +79,12 @@ export async function uploadAndRecordFile(userId, file, customFilename, descript
     sizeBytes: newSize,
     customHash,
     encryption,
+    driveId: targetDriveId,
+    folderId: targetFolderId,
+    uploadedBy: Number(userId),
+    description: description || "",
   });
+  await addDriveUsage(targetDriveId, newSize);
 
   // 5. Update quota and record on blockchain (if configured)
   let fileTxHash = null;
@@ -88,16 +108,28 @@ export async function uploadAndRecordFile(userId, file, customFilename, descript
  */
 export async function deleteFileForUser(userId, fileId) {
   const walletAddress = await getWalletAddress(userId);
-  const file = await getFileByIdAndOwner(fileId, userId);
-  if (file) {
-    const fileSizeBytes = Number(file.size_bytes || 0);
-    await deleteFileByIdAndOwner(fileId, userId);
-    await deleteSharesByFileId(fileId);
-    try {
-      await blockchainService.refundQuota(walletAddress, fileSizeBytes);
-    } catch (err) {
-      console.warn("refundQuota failed; continuing:", err?.message || err);
-    }
+  const file = await getFileById(fileId);
+  if (!file) return;
+
+  const driveId = file?.drive_id != null ? Number(file.drive_id) : null;
+  if (driveId != null) {
+    await requireDriveRole(driveId, userId, ["admin"]);
+  } else if (Number(file.user_id) !== Number(userId)) {
+    const err = new Error("Access denied");
+    err.code = "ACCESS_DENIED";
+    throw err;
+  }
+
+  const fileSizeBytes = Number(file.size_bytes || 0);
+  await deleteFileByIdAndOwner(fileId, file.user_id);
+  await deleteSharesByFileId(fileId);
+  if (driveId != null) {
+    await recalculateDriveUsage(driveId);
+  }
+  try {
+    await blockchainService.refundQuota(walletAddress, fileSizeBytes);
+  } catch (err) {
+    console.warn("refundQuota failed; continuing:", err?.message || err);
   }
 }
 
@@ -114,6 +146,10 @@ export async function getUserFiles(userId) {
     custom_hash: f.custom_hash || null,
     tx_hash: f.tx_hash || null,
     encryption: f.encryption || null,
+    drive_id: f.drive_id ?? null,
+    folder_id: f.folder_id ?? null,
+    description: f.description || "",
+    uploaded_by: f.uploaded_by ?? null,
   }));
 }
 

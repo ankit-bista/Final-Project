@@ -11,9 +11,9 @@ export function PublicLanding() {
       <nav className="fixed top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">
-            <img src="/icon.svg" alt="CloudVault" className="h-7 w-7 object-contain" />
+            <img src="/icon.png" alt="SecureVault" className="h-7 w-7 object-contain" />
             <div className="bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-2xl font-bold text-transparent">
-              CloudVault
+              SecureVault
             </div>
           </div>
           <div className="flex items-center gap-3">

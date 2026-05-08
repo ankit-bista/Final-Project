@@ -1,7 +1,7 @@
 import { blockchainService } from "./blockchain.js";
 import { canUserAccessFileDb } from "./accessControl.js";
 import { getWalletAddress } from "./fileService.js";
-import { getFileById } from "./models/fileModel.js";
+import { getFileById } from "./models/index.js";
 
 function mapAction(action) {
   // contract expects "view" or "edit"

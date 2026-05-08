@@ -9,8 +9,7 @@ import { ViewToggle } from '@/components/view-toggle'
 import { FileViewerModal } from '@/components/file-viewer-modal'
 import { FileCommentsPanel } from '@/components/file-comments-panel'
 import { UploadZone } from '@/components/upload-zone'
-import { ShareDialog } from '@/components/share-dialog'
-import { DeleteDialog } from '@/components/delete-dialog'
+import { ShareDialog, DeleteDialog } from '@/components/file-dialogs'
 import { Button } from '@/components/ui/button'
 import { PublicLanding } from '@/components/public-landing'
 import { Link2, MessageSquare, Upload } from 'lucide-react'
@@ -58,7 +57,6 @@ export default function CombinedPage() {
   }
 
   useEffect(() => {
-    if (!isConnected) return
     void loadAll()
   }, [isConnected])
 
@@ -115,7 +113,7 @@ export default function CombinedPage() {
     await loadAll()
   }
 
-  if (!isConnected) return <PublicLanding />
+  // if (!isConnected) return <PublicLanding />
 
   return (
     <MainLayout title="Combined Workspace" onSearch={setSearch}>

@@ -1,5 +1,5 @@
 import { canUserAccessFileHybrid } from "./permissionService.js";
-import { getFileById } from "./models/fileModel.js";
+import { getFileById } from "./models/index.js";
 
 export async function getInAppViewUrl(requesterId, fileId) {
   const allowed = await canUserAccessFileHybrid(requesterId, fileId, "view");

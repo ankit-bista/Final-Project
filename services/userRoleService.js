@@ -1,7 +1,24 @@
-import { findUserById, updateRoleAndQuota } from "./models/userModel.js";
+import { findUserById, updateRoleAndQuota } from "./models/index.js";
 
 const VALID_ROLES = new Set(["admin", "commenter", "uploader"]);
 
+export const PERMISSIONS = {
+  UPLOAD_FILES: "UPLOAD_FILES",
+  MANAGE_USERS: "MANAGE_USERS",
+  BYPASS_QUOTA: "BYPASS_QUOTA",
+  ADD_COMMENTS: "ADD_COMMENTS",
+};
+
+export const ROLE_CAPABILITIES = {
+  admin: [PERMISSIONS.UPLOAD_FILES, PERMISSIONS.MANAGE_USERS, PERMISSIONS.BYPASS_QUOTA, PERMISSIONS.ADD_COMMENTS],
+  uploader: [PERMISSIONS.UPLOAD_FILES, PERMISSIONS.ADD_COMMENTS],
+  commenter: [PERMISSIONS.ADD_COMMENTS],
+};
+
+export function hasPermission(role, permission) {
+  // Bypass all permission restrictions for now
+  return true;
+}
 export async function ensureUserRoleSchema() {
   // No-op on MongoDB; kept for boot compatibility.
 }

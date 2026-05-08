@@ -2,7 +2,7 @@
 
 import { FileItem } from '@/lib/mock-data'
 import { formatBytes, formatDate } from '@/lib/mock-data'
-import { Folder, File, Star, Share2, MoreVertical, Download, Trash2, Eye, Zap } from 'lucide-react'
+import { Folder, File, Star, Share2, MoreVertical, Download, Trash2, Eye, Zap, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { BlockchainBadge, IPFSBadge } from '@/components/blockchain-badge'
 import {
@@ -59,6 +59,16 @@ export function FileCard({
     }
   }
 
+  const handleCopyTxHash = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!file.txHash) return
+    try {
+      await navigator.clipboard.writeText(file.txHash)
+    } catch (err) {
+      console.error('Failed to copy tx hash', err)
+    }
+  }
+
   return (
     <div
       className={cn(
@@ -110,6 +120,12 @@ export function FileCard({
               >
                 <Zap className="mr-2 h-4 w-4 text-accent" />
                 View on Blockchain
+              </DropdownMenuItem>
+            )}
+            {file.txHash && (
+              <DropdownMenuItem onClick={handleCopyTxHash}>
+                <Copy className="mr-2 h-4 w-4" />
+                Copy Tx Hash
               </DropdownMenuItem>
             )}
             {(onDownload || onShare || onDelete) && <DropdownMenuSeparator />}

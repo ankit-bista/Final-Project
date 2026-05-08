@@ -18,17 +18,17 @@ import { cn } from '@/lib/utils'
 
 const NAV_ITEMS = [
   {
-    label: 'My Files',
+    label: 'My Drive',
     href: '/',
     icon: Folder,
   },
   {
-    label: 'Combined',
+    label: 'Shared Drives',
     href: '/combined',
     icon: Layers,
   },
   {
-    label: 'Shared',
+    label: 'Shared With Me',
     href: '/shared',
     icon: Share2,
   },
@@ -68,9 +68,9 @@ export function Sidebar({ isAdmin = false }: SidebarProps) {
       <div className="p-6 border-b border-sidebar-border">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-sidebar-primary rounded-lg flex items-center justify-center overflow-hidden">
-            <img src="/icon.svg" alt="CloudVault" className="w-6 h-6 object-contain" />
+            <img src="/icon.png" alt="SecureVault" className="w-6 h-6 object-contain" />
           </div>
-          <span className="text-lg font-bold text-sidebar-foreground">CloudVault</span>
+          <span className="text-lg font-bold text-sidebar-foreground">SecureVault</span>
         </div>
       </div>
 

@@ -7,15 +7,11 @@ import { FileGrid } from '@/components/file-grid'
 import { FileList } from '@/components/file-list'
 import { ViewToggle } from '@/components/view-toggle'
 import { UploadZone } from '@/components/upload-zone'
-import { NewFolderDialog } from '@/components/new-folder-dialog'
-import { DeleteDialog } from '@/components/delete-dialog'
-import { ShareDialog } from '@/components/share-dialog'
+import { NewFolderDialog, DeleteDialog, ShareDialog } from '@/components/file-dialogs'
 import { FileViewerModal } from '@/components/file-viewer-modal'
 import { FileCommentsPanel } from '@/components/file-comments-panel'
 import { Button } from '@/components/ui/button'
 import { Link2, MessageSquare, Plus, Upload } from 'lucide-react'
-import { PublicLanding } from '@/components/public-landing'
-import { useFileNavigation } from '@/hooks/use-file-navigation'
 import api from '@/lib/api'
 import { useWeb3 } from '@/context/web3-context'
 import { cacheFileKeyByCid, decryptBlobWithWallet, decryptWithMetaMask, encryptForPublicKey, getCachedFileKeyByCid } from '@/lib/file-crypto'
@@ -32,17 +28,42 @@ export default function DashboardPage() {
   const [shareData, setShareData] = useState<{ open: boolean; fileId?: string }>({ open: false })
   const [shareProgressLabel, setShareProgressLabel] = useState('')
   const [shareProgressPercent, setShareProgressPercent] = useState(0)
-  const [files, setFiles] = useState<any[]>([])
+  const [fileRows, setFileRows] = useState<any[]>([])
+  const [folderRows, setFolderRows] = useState<any[]>([])
+  const [drives, setDrives] = useState<any[]>([])
+  const [activeDriveId, setActiveDriveId] = useState<string>('')
+  const [folderPath, setFolderPath] = useState<{ id: number; name: string }[]>([])
   const [viewer, setViewer] = useState<{ open: boolean; fileId?: string; fileName?: string; url?: string }>({ open: false })
   const [comments, setComments] = useState<{ open: boolean; fileId?: string; fileName?: string }>({ open: false })
-  
-  const navigation = useFileNavigation(files)
 
-  const fetchFiles = async () => {
+  const currentFolderId = folderPath.length ? folderPath[folderPath.length - 1].id : null
+
+  const fetchDrives = async () => {
     try {
-      const res = await api.get('/files')
-      // Map API response to UI expected format
-      const mappedFiles = res.data.map((f: any) => ({
+      const res = await api.get('/api/drives/me')
+      const rows = res.data || []
+      setDrives(rows)
+      if (!activeDriveId && rows.length) {
+        const def = rows.find((d: any) => d.personal) || rows[0]
+        setActiveDriveId(String(def.id))
+      }
+    } catch (err) {
+      console.error('Failed to fetch drives', err)
+    }
+  }
+
+  const fetchDriveContents = async (driveId: string, folderId?: number | null) => {
+    if (!driveId) return
+    try {
+      const [filesRes, foldersRes] = await Promise.all([
+        api.get(`/api/drives/${driveId}/files`, {
+          params: { folderId: folderId == null ? '' : folderId },
+        }),
+        api.get(`/api/drives/${driveId}/folders`, {
+          params: { parentFolderId: folderId == null ? '' : folderId },
+        }),
+      ])
+      const mappedFiles = (filesRes.data || []).map((f: any) => ({
         id: f.id.toString(),
         name: f?.encryption?.originalName || f.filename,
         type: 'file',
@@ -54,27 +75,42 @@ export default function DashboardPage() {
         txHash: f.tx_hash || null,
         isOnBlockchain: Boolean(f.tx_hash),
         encryption: f.encryption || null,
+        driveId: f.drive_id ?? null,
+        folderId: f.folder_id ?? null,
       }))
-      setFiles(mappedFiles)
+      const mappedFolders = (foldersRes.data || []).map((folder: any) => ({
+        id: `folder-${folder.id}`,
+        folderId: Number(folder.id),
+        name: folder.name,
+        type: 'folder',
+        size: '--',
+        modified: new Date(folder.created_at || Date.now()).toLocaleDateString(),
+        shared: false,
+        isOnBlockchain: false,
+      }))
+      setFileRows(mappedFiles)
+      setFolderRows(mappedFolders)
     } catch (err) {
-      console.error('Failed to fetch files', err)
+      console.error('Failed to fetch drive contents', err)
     }
   }
 
   useEffect(() => {
-    if (isConnected) {
-      fetchFiles()
-    } else {
-      setFiles([])
-    }
+    void fetchDrives()
   }, [isConnected])
 
+  useEffect(() => {
+    if (!activeDriveId) return
+    void fetchDriveContents(activeDriveId, currentFolderId)
+  }, [activeDriveId, currentFolderId])
+
+  const files = useMemo(() => [...folderRows, ...fileRows], [folderRows, fileRows])
   const filteredFiles = useMemo(() => {
-    const searched = navigation.contents.filter((file) =>
-      file.name.toLowerCase().includes(searchQuery.toLowerCase())
+    const searched = files.filter((file) =>
+      String(file.name || '').toLowerCase().includes(searchQuery.toLowerCase())
     )
     return sortFilesByTypeFromScratch(searched)
-  }, [navigation.contents, searchQuery])
+  }, [files, searchQuery])
 
   const handleSelectFile = (id: string, selected: boolean = !selectedFiles.includes(id)) => {
     setSelectedFiles((prev) =>
@@ -82,14 +118,20 @@ export default function DashboardPage() {
     )
   }
 
-  const breadcrumbItems = navigation.breadcrumbs.map((item: any) => ({
-    ...item,
-    onClick: () => navigation.navigateToPath(item.path),
-  }))
+  const breadcrumbItems = [
+    {
+      label: drives.find((d) => String(d.id) === String(activeDriveId))?.name || 'Drive',
+      onClick: () => setFolderPath([]),
+    },
+    ...folderPath.map((f, idx) => ({
+      label: f.name,
+      onClick: () => setFolderPath(folderPath.slice(0, idx + 1)),
+    })),
+  ]
 
   const handleUploadComplete = () => {
     setUploadOpen(false);
-    fetchFiles();
+    void fetchDriveContents(activeDriveId, currentFolderId);
   }
 
   const handleDeleteClick = (id: string) => {
@@ -101,7 +143,7 @@ export default function DashboardPage() {
        try {
          await api.post(`/delete/${deleteData.fileId}`);
          setSelectedFiles((prev) => prev.filter((fid) => fid !== deleteData.fileId));
-         fetchFiles();
+         void fetchDriveContents(activeDriveId, currentFolderId);
        } catch (err) {
          console.error('Delete failed', err);
        }
@@ -115,12 +157,13 @@ export default function DashboardPage() {
          }
        }
        setSelectedFiles([]);
-       fetchFiles();
+       void fetchDriveContents(activeDriveId, currentFolderId);
     }
     setDeleteData({ open: false });
   }
 
   const handleDownloadClick = async (id: string) => {
+    if (id.startsWith('folder-')) return
     try {
       const file = files.find((f) => String(f.id) === String(id))
       const [contentRes, cryptoRes] = await Promise.all([
@@ -152,6 +195,7 @@ export default function DashboardPage() {
     setShareData({ open: true, fileId: id });
   }
   const handleViewClick = async (id: string) => {
+    if (id.startsWith('folder-')) return
     const file = files.find((f) => f.id === id)
     setViewer({ open: true, fileId: id, fileName: file?.name })
   }
@@ -161,34 +205,58 @@ export default function DashboardPage() {
   }
   const handleAnchorSelected = async () => {
     if (!selectedFiles.length) return
+    if (selectedFiles[0].startsWith('folder-')) return
     const id = selectedFiles[0]
     try {
       const res = await api.post(`/files/${id}/anchor`)
       const txHash = res.data?.txHash
       alert(txHash ? `Anchored on blockchain.\nTx: ${txHash}` : 'Anchor submitted.')
-      await fetchFiles()
+      await fetchDriveContents(activeDriveId, currentFolderId)
     } catch (err: any) {
       alert(err?.response?.data?.error || 'Failed to anchor file')
     }
   }
 
-  const handleCreateFolder = (folderName: string) => {
-    const now = new Date().toLocaleDateString()
-    const newFolder = {
-      id: `folder-${Date.now()}`,
+  const handleCreateFolder = async (folderName: string) => {
+    if (!activeDriveId) return
+    await api.post(`/api/drives/${activeDriveId}/folders`, {
       name: folderName,
-      type: 'folder',
-      size: '--',
-      modified: now,
-      created: now,
-      owner: 'You',
-      shared: false,
-      starred: false,
-      children: [],
-      isOnBlockchain: false,
-    }
+      parentFolderId: currentFolderId,
+    })
+    await fetchDriveContents(activeDriveId, currentFolderId)
+  }
 
-    setFiles((prev) => [newFolder, ...prev])
+  const handleCreateDrive = async () => {
+    const name = window.prompt('Enter shared drive name')
+    if (!name?.trim()) return
+    try {
+      const res = await api.post('/api/drives', { name: name.trim(), quotaLimitBytes: 0 })
+      await fetchDrives()
+      if (res?.data?.id) {
+        setActiveDriveId(String(res.data.id))
+        setFolderPath([])
+      }
+    } catch (err) {
+      console.error('Failed to create drive', err)
+      alert('Failed to create drive')
+    }
+  }
+
+  const handleInvite = async () => {
+    if (!activeDriveId) return
+    const identifier = window.prompt('Invite user (username or wallet)')
+    if (!identifier?.trim()) return
+    const roleChoice = window.prompt('Role for invited user: admin, editor, or viewer', 'viewer') || 'viewer'
+    try {
+      await api.post(`/api/drives/${activeDriveId}/invite`, {
+        identifier: identifier.trim(),
+        role: roleChoice,
+      })
+      alert('User invited successfully')
+    } catch (err: any) {
+      console.error('Invite failed', err)
+      alert(err?.response?.data?.error || 'Failed to invite user')
+    }
   }
 
   const handleConfirmShare = async (
@@ -210,11 +278,11 @@ export default function DashboardPage() {
     setShareProgressLabel('Preparing file keys...')
     setShareProgressPercent(25)
     const keyShares: Record<string, any> = {}
-    const encryptableFiles = files.filter((f) => Boolean(f.encryption?.ownerEncryptedKey))
+    const encryptableFiles = fileRows.filter((f) => Boolean(f.encryption?.ownerEncryptedKey))
     const total = Math.max(1, encryptableFiles.length)
     let done = 0
     let skipped = 0
-    for (const f of files) {
+    for (const f of fileRows) {
       if (!f.encryption?.ownerEncryptedKey) continue
       let rawKey = getCachedFileKeyByCid(f.cid)
       if (!rawKey) {
@@ -254,28 +322,45 @@ export default function DashboardPage() {
     }
     setShareProgressLabel('Done')
     setShareProgressPercent(100)
-    fetchFiles()
+    fetchDriveContents(activeDriveId, currentFolderId)
     setTimeout(() => {
       setShareProgressLabel('')
       setShareProgressPercent(0)
     }, 300)
   }
 
-  if (!isConnected) {
-    return <PublicLanding />
-  }
+  // if (!isConnected) {
+  //   return <PublicLanding />
+  // }
 
   return (
-    <MainLayout title="My Files" onSearch={setSearchQuery}>
-      <BreadcrumbNav items={breadcrumbItems.slice(1)} onNavigate={navigation.navigateToPath} />
+    <MainLayout title="My Drive" onSearch={setSearchQuery}>
+      <BreadcrumbNav items={breadcrumbItems} />
       
       {/* Action bar */}
-      <div className="bg-card px-6 py-4 border-b border-border flex items-center justify-between">
-        <div className="flex gap-2">
+      <div className="bg-card px-6 py-4 border-b border-border flex items-center justify-between gap-3">
+        <div className="flex gap-2 items-center">
+          <select
+            value={activeDriveId}
+            onChange={(e) => {
+              setActiveDriveId(e.target.value)
+              setFolderPath([])
+              setSelectedFiles([])
+            }}
+            className="border border-input bg-background rounded-md px-3 py-2 text-sm min-w-[220px]"
+          >
+            {drives.map((drive) => (
+              <option key={String(drive.id)} value={String(drive.id)}>
+                {drive.name} {drive.personal ? '(Default)' : ''}
+              </option>
+            ))}
+          </select>
           <Button onClick={() => setNewFolderOpen(true)} className="gap-2">
             <Plus className="w-4 h-4" />
             New Folder
           </Button>
+          <Button variant="outline" onClick={handleCreateDrive}>New Shared Drive</Button>
+          <Button variant="outline" onClick={handleInvite}>Invite</Button>
           <Button variant="outline" className="gap-2" onClick={() => setUploadOpen(true)}>
             <Upload className="w-4 h-4" />
             Upload
@@ -299,7 +384,12 @@ export default function DashboardPage() {
             files={filteredFiles}
             selectedFiles={selectedFiles}
             onSelectFile={handleSelectFile}
-            onFolderOpen={navigation.openFolder}
+            onFolderOpen={(folder: any) => {
+              if (folder?.type === 'folder' && Number.isFinite(folder.folderId)) {
+                setFolderPath((prev) => [...prev, { id: Number(folder.folderId), name: folder.name }])
+                setSelectedFiles([])
+              }
+            }}
             onDelete={handleDeleteClick}
             onDownload={handleDownloadClick}
             onShare={handleShareClick}
@@ -310,7 +400,12 @@ export default function DashboardPage() {
             files={filteredFiles}
             selectedFiles={selectedFiles}
             onSelectFile={handleSelectFile}
-            onFolderOpen={navigation.openFolder}
+            onFolderOpen={(folder: any) => {
+              if (folder?.type === 'folder' && Number.isFinite(folder.folderId)) {
+                setFolderPath((prev) => [...prev, { id: Number(folder.folderId), name: folder.name }])
+                setSelectedFiles([])
+              }
+            }}
             onDelete={handleDeleteClick}
             onDownload={handleDownloadClick}
             onShare={handleShareClick}
@@ -320,14 +415,14 @@ export default function DashboardPage() {
       </div>
       <div className="px-6 pb-6">
         <div className="flex gap-2">
-          <Button variant="outline" className="gap-2" disabled={!selectedFiles.length} onClick={() => handleOpenComments(selectedFiles[0])}>
+          <Button variant="outline" className="gap-2" disabled={!selectedFiles.length || selectedFiles[0]?.startsWith('folder-')} onClick={() => handleOpenComments(selectedFiles[0])}>
             <MessageSquare className="h-4 w-4" />
             Comments
           </Button>
           <Button
             variant="outline"
             className="gap-2"
-            disabled={!selectedFiles.length || role === 'commenter'}
+            disabled={!selectedFiles.length || role === 'commenter' || selectedFiles[0]?.startsWith('folder-')}
             onClick={handleAnchorSelected}
           >
             <Link2 className="h-4 w-4" />

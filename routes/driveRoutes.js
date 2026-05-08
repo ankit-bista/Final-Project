@@ -1,17 +1,33 @@
 import express from "express";
 import multer from "multer";
 import { uploadAndRecordFile, deleteFileForUser, getUserFiles, anchorFileForUser } from "../services/fileService.js";
-import { shareDriveWithUser, shareFileWithUser, getSharedWithUser } from "../services/shareService.js";
-import { createExpiringLinkForFile, resolveLinkToken } from "../services/linkService.js";
+import { shareDriveWithUser, shareFileWithUser, getSharedWithUser, createExpiringLinkForFile, resolveLinkToken } from "../services/collaborationService.js";
 import { getUserRoleAndQuota } from "../services/userRoleService.js";
 import { assertCanUpload, getQuotaSnapshot } from "../services/quotaService.js";
 import { addCommentToFile, listCommentsForFile } from "../services/commentService.js";
 import { getInAppViewUrl, getInAppFileContent } from "../services/fileViewService.js";
 import { resolveRequestUserId } from "../services/devTestAuth.js";
-import { findUserById, findUserByUsernameOrWallet } from "../services/models/userModel.js";
-import { findShare } from "../services/models/shareModel.js";
-import { getFileById } from "../services/models/fileModel.js";
+import {
+  createDriveActivityLog,
+  createFolder,
+  findUserById,
+  findUserByUsernameOrWallet,
+  findShare,
+  getFileById,
+  listFilesByDrive,
+  listFoldersByDriveAndParent,
+} from "../services/models/index.js";
 import { canUserAccessFileHybrid } from "../services/permissionService.js";
+import {
+  createCollaborativeDrive,
+  ensureDefaultDriveForUser,
+  getDriveMembersByUser,
+  inviteDriveMember,
+  listMyDrives,
+  removeDriveMemberByAdmin,
+  requireDriveRole,
+  updateDriveQuotaByAdmin,
+} from "../services/driveService.js";
 
 const router = express.Router();
 const upload = multer({ 
@@ -36,6 +52,7 @@ router.get("/me", requireAuth, async (req, res) => {
     const userId = req.authUserId;
     const user = await findUserById(userId);
     if (!user) return res.status(401).json({ error: "Not authenticated" });
+    await ensureDefaultDriveForUser(user.id);
     const roleInfo = await getUserRoleAndQuota(user.id);
     const quota = await getQuotaSnapshot(user.id);
     res.json({
@@ -62,6 +79,8 @@ router.post("/upload", requireAuth, upload.single("file"), async (req, res) => {
     const customFilename = req.body.filename || req.file.originalname;
     const description = req.body.description || "";
     await assertCanUpload(req.authUserId, req.file.size || 0);
+    const driveId = req.body?.driveId ? Number(req.body.driveId) : null;
+    const folderId = req.body?.folderId != null && req.body.folderId !== "" ? Number(req.body.folderId) : null;
 
     let encryption = null;
     if (req.body?.encryption) {
@@ -72,7 +91,23 @@ router.post("/upload", requireAuth, upload.single("file"), async (req, res) => {
       }
     }
 
-    const result = await uploadAndRecordFile(req.authUserId, req.file, customFilename, description, encryption);
+    const result = await uploadAndRecordFile(
+      req.authUserId,
+      req.file,
+      customFilename,
+      description,
+      encryption,
+      { driveId, folderId }
+    );
+    if (driveId) {
+      await createDriveActivityLog({
+        driveId,
+        actorUserId: req.authUserId,
+        action: "file_uploaded",
+        targetType: "file",
+        metadata: { fileName: customFilename, cid: result.cid },
+      });
+    }
     res.json({ success: true, cid: result.cid, customHash: result.customHash });
   } catch (err) {
     if (err?.code === "QUOTA_EXCEEDED") {
@@ -106,11 +141,186 @@ router.post("/delete/:id", requireAuth, async (req, res) => {
 // List files in my decentralized drive (I am the owner)
 router.get("/files", requireAuth, async (req, res) => {
   try {
-    const files = await getUserFiles(req.authUserId);
+    const driveId = req.query?.driveId ? Number(req.query.driveId) : null;
+    const folderId = req.query?.folderId != null && req.query.folderId !== "" ? Number(req.query.folderId) : null;
+    let files;
+    if (driveId) {
+      await requireDriveRole(driveId, req.authUserId, ["admin", "editor", "viewer"]);
+      const rows = await listFilesByDrive(driveId, folderId);
+      files = rows.map((f) => ({
+        id: f.id,
+        filename: f.file_name,
+        cid: f.ipfs_hash,
+        size_bytes: Number(f.size_bytes || 0),
+        custom_hash: f.custom_hash || null,
+        tx_hash: f.tx_hash || null,
+        encryption: f.encryption || null,
+        drive_id: f.drive_id ?? null,
+        folder_id: f.folder_id ?? null,
+        description: f.description || "",
+        uploaded_by: f.uploaded_by ?? null,
+      }));
+    } else {
+      files = await getUserFiles(req.authUserId);
+    }
     res.json(files);
   } catch (err) {
     console.error("Error loading files:", err);
     res.status(500).json({ error: "Failed to load files" });
+  }
+});
+
+router.get("/api/drives/me", requireAuth, async (req, res) => {
+  try {
+    await ensureDefaultDriveForUser(req.authUserId);
+    const drives = await listMyDrives(req.authUserId);
+    return res.json(drives);
+  } catch (err) {
+    console.error("List drives error:", err);
+    return res.status(500).json({ error: "Failed to load drives" });
+  }
+});
+
+router.post("/api/drives", requireAuth, async (req, res) => {
+  try {
+    const { name, quotaLimitBytes } = req.body || {};
+    const drive = await createCollaborativeDrive({
+      ownerId: req.authUserId,
+      name,
+      quotaLimitBytes: Number(quotaLimitBytes || 0),
+    });
+    return res.json(drive);
+  } catch (err) {
+    console.error("Create drive error:", err);
+    return res.status(500).json({ error: "Failed to create drive" });
+  }
+});
+
+router.get("/api/drives/:driveId/members", requireAuth, async (req, res) => {
+  try {
+    const driveId = Number(req.params.driveId);
+    const members = await getDriveMembersByUser(driveId, req.authUserId);
+    return res.json(members);
+  } catch (err) {
+    const status = err?.code === "NOT_FOUND" ? 404 : err?.code === "ACCESS_DENIED" ? 403 : 500;
+    return res.status(status).json({ error: err?.message || "Failed to load members" });
+  }
+});
+
+router.post("/api/drives/:driveId/invite", requireAuth, async (req, res) => {
+  try {
+    const driveId = Number(req.params.driveId);
+    const identifier = String(req.body?.identifier || req.body?.username || "").trim();
+    if (!identifier) return res.status(400).json({ error: "identifier required" });
+    const target = await findUserByUsernameOrWallet(identifier);
+    if (!target) return res.status(404).json({ error: "Target user not found" });
+    const member = await inviteDriveMember({
+      driveId,
+      actorUserId: req.authUserId,
+      targetUserId: target.id,
+      role: req.body?.role || "viewer",
+    });
+    return res.json({ success: true, member });
+  } catch (err) {
+    const status = err?.code === "NOT_FOUND" ? 404 : err?.code === "ACCESS_DENIED" ? 403 : 500;
+    return res.status(status).json({ error: err?.message || "Failed to invite member" });
+  }
+});
+
+router.delete("/api/drives/:driveId/members/:userId", requireAuth, async (req, res) => {
+  try {
+    const driveId = Number(req.params.driveId);
+    const userId = Number(req.params.userId);
+    const ok = await removeDriveMemberByAdmin({
+      driveId,
+      actorUserId: req.authUserId,
+      targetUserId: userId,
+    });
+    if (!ok) return res.status(404).json({ error: "Member not found" });
+    return res.json({ success: true });
+  } catch (err) {
+    const status = err?.code === "NOT_FOUND" ? 404 : err?.code === "ACCESS_DENIED" ? 403 : 500;
+    return res.status(status).json({ error: err?.message || "Failed to remove member" });
+  }
+});
+
+router.post("/api/drives/:driveId/quota", requireAuth, async (req, res) => {
+  try {
+    const driveId = Number(req.params.driveId);
+    await updateDriveQuotaByAdmin({
+      driveId,
+      actorUserId: req.authUserId,
+      quotaLimitBytes: Number(req.body?.quotaLimitBytes || 0),
+    });
+    return res.json({ success: true });
+  } catch (err) {
+    const status = err?.code === "NOT_FOUND" ? 404 : err?.code === "ACCESS_DENIED" ? 403 : 500;
+    return res.status(status).json({ error: err?.message || "Failed to update drive quota" });
+  }
+});
+
+router.post("/api/drives/:driveId/folders", requireAuth, async (req, res) => {
+  try {
+    const driveId = Number(req.params.driveId);
+    await requireDriveRole(driveId, req.authUserId, ["admin", "editor"]);
+    const folder = await createFolder({
+      driveId,
+      parentFolderId: req.body?.parentFolderId != null ? Number(req.body.parentFolderId) : null,
+      name: req.body?.name,
+      createdBy: req.authUserId,
+    });
+    await createDriveActivityLog({
+      driveId,
+      actorUserId: req.authUserId,
+      action: "folder_created",
+      targetType: "folder",
+      targetId: folder.id,
+      metadata: { name: folder.name },
+    });
+    return res.json(folder);
+  } catch (err) {
+    const status = err?.code === "NOT_FOUND" ? 404 : err?.code === "ACCESS_DENIED" ? 403 : 500;
+    return res.status(status).json({ error: err?.message || "Failed to create folder" });
+  }
+});
+
+router.get("/api/drives/:driveId/folders", requireAuth, async (req, res) => {
+  try {
+    const driveId = Number(req.params.driveId);
+    await requireDriveRole(driveId, req.authUserId, ["admin", "editor", "viewer"]);
+    const parentFolderId = req.query?.parentFolderId != null && req.query.parentFolderId !== ""
+      ? Number(req.query.parentFolderId)
+      : null;
+    const folders = await listFoldersByDriveAndParent(driveId, parentFolderId);
+    return res.json(folders);
+  } catch (err) {
+    const status = err?.code === "NOT_FOUND" ? 404 : err?.code === "ACCESS_DENIED" ? 403 : 500;
+    return res.status(status).json({ error: err?.message || "Failed to list folders" });
+  }
+});
+
+router.get("/api/drives/:driveId/files", requireAuth, async (req, res) => {
+  try {
+    const driveId = Number(req.params.driveId);
+    const folderId = req.query?.folderId != null && req.query.folderId !== "" ? Number(req.query.folderId) : null;
+    await requireDriveRole(driveId, req.authUserId, ["admin", "editor", "viewer"]);
+    const files = await listFilesByDrive(driveId, folderId);
+    return res.json(files.map((f) => ({
+      id: f.id,
+      filename: f.file_name,
+      cid: f.ipfs_hash,
+      size_bytes: Number(f.size_bytes || 0),
+      custom_hash: f.custom_hash || null,
+      tx_hash: f.tx_hash || null,
+      encryption: f.encryption || null,
+      drive_id: f.drive_id ?? null,
+      folder_id: f.folder_id ?? null,
+      description: f.description || "",
+      uploaded_by: f.uploaded_by ?? null,
+    })));
+  } catch (err) {
+    const status = err?.code === "NOT_FOUND" ? 404 : err?.code === "ACCESS_DENIED" ? 403 : 500;
+    return res.status(status).json({ error: err?.message || "Failed to list files" });
   }
 });
 

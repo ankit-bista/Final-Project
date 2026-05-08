@@ -22,8 +22,8 @@ export default function SharedPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [files, setFiles] = useState<any[]>([])
-  const [driveShares, setDriveShares] = useState<{ ownerName: string; role: 'viewer' | 'editor' }[]>([])
-  const [selectedShareOwner, setSelectedShareOwner] = useState<string>('')
+  const [driveShares, setDriveShares] = useState<{ shareName: string; role: 'viewer' | 'editor' }[]>([])
+  const [selectedShareName, setSelectedShareName] = useState<string>('')
   const [viewer, setViewer] = useState<{ open: boolean; fileId?: string; fileName?: string; url?: string }>({ open: false })
   const [comments, setComments] = useState<{ open: boolean; fileId?: string; fileName?: string }>({ open: false })
 
@@ -42,32 +42,33 @@ export default function SharedPage() {
         txHash: f.tx_hash || null,
         isOnBlockchain: Boolean(f.tx_hash),
         ownerName: f.owner_name,
+        shareName: f.share_name || `${f.owner_name} shares`,
         shareRole: f.role as 'viewer' | 'editor',
       }))
       setFiles(mappedFiles)
 
-      // Build dropdown options grouped by who shared the drive (owner_name),
+      // Build dropdown options grouped by share name.
       // and pick the strongest role (editor > viewer) per owner.
       const roleRank = (r: string) => (r === 'editor' ? 2 : 1)
-      const shareMap = new Map<string, { ownerName: string; role: 'viewer' | 'editor' }>()
+      const shareMap = new Map<string, { shareName: string; role: 'viewer' | 'editor' }>()
       for (const f of res.data) {
-        const ownerName = f.owner_name
+        const shareName = f.share_name || `${f.owner_name} shares`
         const role = (f.role as 'viewer' | 'editor') || 'viewer'
-        const existing = shareMap.get(ownerName)
+        const existing = shareMap.get(shareName)
         if (!existing) {
-          shareMap.set(ownerName, { ownerName, role })
+          shareMap.set(shareName, { shareName, role })
         } else {
           const existingRank = roleRank(existing.role)
           const incomingRank = roleRank(role)
           if (incomingRank > existingRank) {
-            shareMap.set(ownerName, { ownerName, role })
+            shareMap.set(shareName, { shareName, role })
           }
         }
       }
 
-      const options = Array.from(shareMap.values()).sort((a, b) => a.ownerName.localeCompare(b.ownerName))
+      const options = Array.from(shareMap.values()).sort((a, b) => a.shareName.localeCompare(b.shareName))
       setDriveShares(options)
-      setSelectedShareOwner(options[0]?.ownerName || '')
+      setSelectedShareName(options[0]?.shareName || '')
     } catch (err) {
       console.error('Failed to fetch shared files:', err)
     }
@@ -79,21 +80,21 @@ export default function SharedPage() {
     } else {
       setFiles([])
       setDriveShares([])
-      setSelectedShareOwner('')
+      setSelectedShareName('')
     }
   }, [isConnected])
 
   useEffect(() => {
     setSelectedFiles([])
-  }, [selectedShareOwner])
+  }, [selectedShareName])
 
   const selectedShareRole =
-    driveShares.find((s) => s.ownerName === selectedShareOwner)?.role || 'viewer'
+    driveShares.find((s) => s.shareName === selectedShareName)?.role || 'viewer'
   const canDownload = selectedShareRole === 'editor'
 
   const filteredFiles = sortFilesByTypeFromScratch(
     files.filter((file) => {
-      const ownerOk = selectedShareOwner ? file.ownerName === selectedShareOwner : true
+      const ownerOk = selectedShareName ? file.shareName === selectedShareName : true
       const searchOk = file.name.toLowerCase().includes(searchQuery.toLowerCase())
       return ownerOk && searchOk
     })
@@ -149,14 +150,14 @@ export default function SharedPage() {
         <div className="flex items-center gap-3">
           <div className="text-sm text-muted-foreground whitespace-nowrap">Shared from</div>
           {driveShares.length > 0 ? (
-            <Select value={selectedShareOwner} onValueChange={setSelectedShareOwner}>
+            <Select value={selectedShareName} onValueChange={setSelectedShareName}>
               <SelectTrigger className="w-[240px]">
                 <SelectValue placeholder="Choose a share" />
               </SelectTrigger>
               <SelectContent>
                 {driveShares.map((s) => (
-                  <SelectItem key={s.ownerName} value={s.ownerName}>
-                    {s.ownerName} ({s.role === 'editor' ? 'Editor' : 'Viewer'})
+                  <SelectItem key={s.shareName} value={s.shareName}>
+                    {s.shareName} ({s.role === 'editor' ? 'Editor' : 'Viewer'})
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -1,5 +1,4 @@
-import { getFileById } from "./models/fileModel.js";
-import { findShare } from "./models/shareModel.js";
+import { getFileById, findShare, getDriveMember } from "./models/index.js";
 
 /**
  * DB-backed RBAC for file access.
@@ -14,6 +13,15 @@ export async function canUserAccessFileDb(userId, fileId, action) {
   if (!file) return false;
   const ownerId = Number(file.user_id);
   if (ownerId === userId) return true;
+
+  // Drive membership RBAC (collaborative drives).
+  if (file?.drive_id != null) {
+    const member = await getDriveMember(file.drive_id, userId);
+    const role = member?.role || null;
+    if (role === "admin") return true;
+    if (action === "view") return role === "viewer" || role === "editor";
+    return role === "editor";
+  }
 
   const required = action === "edit" ? "editor" : "viewer";
 

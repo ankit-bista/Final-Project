@@ -9,9 +9,11 @@ import driveRoutes from "./routes/driveRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import blockchainRoutes from "./routes/blockchainRoutes.js";
 import activityRoutes from "./routes/activityRoutes.js";
+import encryptionRoutes from "./routes/encryption.js";
+import sharingRoutes from "./routes/sharing.js";
 import { ensureUserRoleSchema } from "./services/userRoleService.js";
 import { ensureCommentsSchema } from "./services/commentService.js";
-import { pingDb } from "./services/models/mongoClient.js";
+import { pingDb } from "./services/database.js";
 
 const app = express();
 ensureUserRoleSchema().catch((err) => console.warn("Role schema init warning:", err?.message || err));
@@ -69,6 +71,8 @@ app.use(driveRoutes);
 app.use(adminRoutes);
 app.use(blockchainRoutes);
 app.use(activityRoutes);
+app.use("/api/encryption", encryptionRoutes);
+app.use("/api/shares", sharingRoutes);
 
 const PORT = process.env.PORT || 5000;
 const ipfsApi = process.env.IPFS_API_URL || "http://127.0.0.1:5002/api/v0";

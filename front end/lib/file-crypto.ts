@@ -120,9 +120,16 @@ export async function decryptBlobWithWallet(
   account: string,
   blob: Blob,
   encryptedKeyPayload: any,
-  ivBase64: string
+  ivBase64: string,
+  cid?: string | null
 ): Promise<Uint8Array> {
-  const keyBase64 = await decryptWithMetaMask(account, encryptedKeyPayload);
+  let keyBase64 = getCachedFileKeyByCid(cid || undefined);
+  if (!keyBase64) {
+    keyBase64 = await decryptWithMetaMask(account, encryptedKeyPayload);
+    if (cid && keyBase64) {
+      cacheFileKeyByCid(cid, keyBase64);
+    }
+  }
   const keyBytes = fromBase64(keyBase64);
   const aesKey = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["decrypt"]);
   const iv = fromBase64(ivBase64);
