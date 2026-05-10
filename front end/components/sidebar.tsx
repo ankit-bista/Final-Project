@@ -3,14 +3,11 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  FileText,
   Folder,
   Share2,
-  Clock,
   Settings,
   Users,
   BarChart3,
-  ChevronRight,
   Zap,
   Layers,
 } from 'lucide-react'
@@ -23,19 +20,19 @@ const NAV_ITEMS = [
     icon: Folder,
   },
   {
+    label: 'Collaborative Drive',
+    href: '/collaborative',
+    icon: Layers,
+  },
+  {
     label: 'Shared Drives',
     href: '/combined',
-    icon: Layers,
+    icon: Folder,
   },
   {
     label: 'Shared With Me',
     href: '/shared',
     icon: Share2,
-  },
-  {
-    label: 'Recent',
-    href: '/recent',
-    icon: Clock,
   },
 ]
 

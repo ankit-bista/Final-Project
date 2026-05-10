@@ -103,7 +103,12 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const disconnectWallet = useCallback(async () => {
-    try { await api.post('/auth/logout') } catch (e) { console.error('Logout error', e) }
+    try {
+      await api.post('/auth/logout')
+    } catch (e: any) {
+      const isNetwork = e?.message === 'Network Error' || e?.code === 'ERR_NETWORK'
+      if (!isNetwork) console.error('Logout error', e)
+    }
     setIsConnected(false)
     setAccount(null)
     setChainId(null)

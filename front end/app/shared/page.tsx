@@ -12,7 +12,6 @@ import { useWeb3 } from '@/context/web3-context'
 import { FileViewerModal } from '@/components/file-viewer-modal'
 import { FileCommentsPanel } from '@/components/file-comments-panel'
 import { MessageSquare } from 'lucide-react'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { decryptBlobWithWallet } from '@/lib/file-crypto'
 import { sortFilesByTypeFromScratch } from '@/lib/file-sort'
 
@@ -22,8 +21,6 @@ export default function SharedPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [files, setFiles] = useState<any[]>([])
-  const [driveShares, setDriveShares] = useState<{ shareName: string; role: 'viewer' | 'editor' }[]>([])
-  const [selectedShareName, setSelectedShareName] = useState<string>('')
   const [viewer, setViewer] = useState<{ open: boolean; fileId?: string; fileName?: string; url?: string }>({ open: false })
   const [comments, setComments] = useState<{ open: boolean; fileId?: string; fileName?: string }>({ open: false })
 
@@ -42,33 +39,9 @@ export default function SharedPage() {
         txHash: f.tx_hash || null,
         isOnBlockchain: Boolean(f.tx_hash),
         ownerName: f.owner_name,
-        shareName: f.share_name || `${f.owner_name} shares`,
         shareRole: f.role as 'viewer' | 'editor',
       }))
       setFiles(mappedFiles)
-
-      // Build dropdown options grouped by share name.
-      // and pick the strongest role (editor > viewer) per owner.
-      const roleRank = (r: string) => (r === 'editor' ? 2 : 1)
-      const shareMap = new Map<string, { shareName: string; role: 'viewer' | 'editor' }>()
-      for (const f of res.data) {
-        const shareName = f.share_name || `${f.owner_name} shares`
-        const role = (f.role as 'viewer' | 'editor') || 'viewer'
-        const existing = shareMap.get(shareName)
-        if (!existing) {
-          shareMap.set(shareName, { shareName, role })
-        } else {
-          const existingRank = roleRank(existing.role)
-          const incomingRank = roleRank(role)
-          if (incomingRank > existingRank) {
-            shareMap.set(shareName, { shareName, role })
-          }
-        }
-      }
-
-      const options = Array.from(shareMap.values()).sort((a, b) => a.shareName.localeCompare(b.shareName))
-      setDriveShares(options)
-      setSelectedShareName(options[0]?.shareName || '')
     } catch (err) {
       console.error('Failed to fetch shared files:', err)
     }
@@ -79,25 +52,11 @@ export default function SharedPage() {
       fetchShared()
     } else {
       setFiles([])
-      setDriveShares([])
-      setSelectedShareName('')
     }
   }, [isConnected])
 
-  useEffect(() => {
-    setSelectedFiles([])
-  }, [selectedShareName])
-
-  const selectedShareRole =
-    driveShares.find((s) => s.shareName === selectedShareName)?.role || 'viewer'
-  const canDownload = selectedShareRole === 'editor'
-
   const filteredFiles = sortFilesByTypeFromScratch(
-    files.filter((file) => {
-      const ownerOk = selectedShareName ? file.shareName === selectedShareName : true
-      const searchOk = file.name.toLowerCase().includes(searchQuery.toLowerCase())
-      return ownerOk && searchOk
-    })
+    files.filter((file) => file.name.toLowerCase().includes(searchQuery.toLowerCase()))
   )
 
   const handleSelectFile = (id: string) => {
@@ -143,29 +102,11 @@ export default function SharedPage() {
   }
 
   return (
-    <MainLayout title="Shared Files" onSearch={setSearchQuery}>
-      <BreadcrumbNav items={[{ label: 'Shared' }]} />
+    <MainLayout title="Shared With Me" onSearch={setSearchQuery}>
+      <BreadcrumbNav items={[{ label: 'Shared With Me' }]} />
       
       <div className="bg-card px-6 py-4 border-b border-border flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="text-sm text-muted-foreground whitespace-nowrap">Shared from</div>
-          {driveShares.length > 0 ? (
-            <Select value={selectedShareName} onValueChange={setSelectedShareName}>
-              <SelectTrigger className="w-[240px]">
-                <SelectValue placeholder="Choose a share" />
-              </SelectTrigger>
-              <SelectContent>
-                {driveShares.map((s) => (
-                  <SelectItem key={s.shareName} value={s.shareName}>
-                    {s.shareName} ({s.role === 'editor' ? 'Editor' : 'Viewer'})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <div className="text-sm text-muted-foreground">No drive shares yet</div>
-          )}
-        </div>
+        <div className="text-sm text-muted-foreground">Single file shares from other users</div>
 
         <div className="flex items-center gap-4">
           <div className="text-sm text-muted-foreground">{filteredFiles.length} shared items</div>
@@ -181,7 +122,7 @@ export default function SharedPage() {
                 files={filteredFiles}
                 selectedFiles={selectedFiles}
                 onSelectFile={handleSelectFile}
-                onDownload={canDownload ? handleDownloadClick : undefined}
+                onDownload={handleDownloadClick}
                 onView={handleViewClick}
               />
             ) : (
@@ -191,7 +132,7 @@ export default function SharedPage() {
                 onSelectFile={(id, selected) =>
                   setSelectedFiles((prev) => (selected ? [...prev, id] : prev.filter((x) => x !== id)))
                 }
-                onDownload={canDownload ? handleDownloadClick : undefined}
+                onDownload={handleDownloadClick}
                 onView={handleViewClick}
               />
             )}

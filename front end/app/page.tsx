@@ -41,11 +41,10 @@ export default function DashboardPage() {
   const fetchDrives = async () => {
     try {
       const res = await api.get('/api/drives/me')
-      const rows = res.data || []
+      const rows = (res.data || []).filter((d: any) => Boolean(d.personal))
       setDrives(rows)
       if (!activeDriveId && rows.length) {
-        const def = rows.find((d: any) => d.personal) || rows[0]
-        setActiveDriveId(String(def.id))
+        setActiveDriveId(String(rows[0].id))
       }
     } catch (err) {
       console.error('Failed to fetch drives', err)
@@ -226,39 +225,6 @@ export default function DashboardPage() {
     await fetchDriveContents(activeDriveId, currentFolderId)
   }
 
-  const handleCreateDrive = async () => {
-    const name = window.prompt('Enter shared drive name')
-    if (!name?.trim()) return
-    try {
-      const res = await api.post('/api/drives', { name: name.trim(), quotaLimitBytes: 0 })
-      await fetchDrives()
-      if (res?.data?.id) {
-        setActiveDriveId(String(res.data.id))
-        setFolderPath([])
-      }
-    } catch (err) {
-      console.error('Failed to create drive', err)
-      alert('Failed to create drive')
-    }
-  }
-
-  const handleInvite = async () => {
-    if (!activeDriveId) return
-    const identifier = window.prompt('Invite user (username or wallet)')
-    if (!identifier?.trim()) return
-    const roleChoice = window.prompt('Role for invited user: admin, editor, or viewer', 'viewer') || 'viewer'
-    try {
-      await api.post(`/api/drives/${activeDriveId}/invite`, {
-        identifier: identifier.trim(),
-        role: roleChoice,
-      })
-      alert('User invited successfully')
-    } catch (err: any) {
-      console.error('Invite failed', err)
-      alert(err?.response?.data?.error || 'Failed to invite user')
-    }
-  }
-
   const handleConfirmShare = async (
     username: string,
     role: 'viewer' | 'editor',
@@ -359,8 +325,6 @@ export default function DashboardPage() {
             <Plus className="w-4 h-4" />
             New Folder
           </Button>
-          <Button variant="outline" onClick={handleCreateDrive}>New Shared Drive</Button>
-          <Button variant="outline" onClick={handleInvite}>Invite</Button>
           <Button variant="outline" className="gap-2" onClick={() => setUploadOpen(true)}>
             <Upload className="w-4 h-4" />
             Upload

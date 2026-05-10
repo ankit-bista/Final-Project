@@ -67,6 +67,23 @@ export function UploadZone({
     if (selectedDriveId) void loadFolders(selectedDriveId)
   }, [selectedDriveId])
 
+  useEffect(() => {
+    if (!drives.length) return
+    const selected = drives.find((d: any) => String(d.id) === String(selectedDriveId))
+    const selectedRole = String(selected?.my_role || '')
+    const canWriteSelected = selectedRole === 'admin' || selectedRole === 'editor'
+    if (!selected || !canWriteSelected) {
+      const firstWritable = drives.find((d: any) => {
+        const role = String(d?.my_role || '')
+        return role === 'admin' || role === 'editor'
+      })
+      if (firstWritable?.id) {
+        setSelectedDriveId(String(firstWritable.id))
+        setSelectedFolderId('')
+      }
+    }
+  }, [drives, selectedDriveId])
+
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -107,6 +124,13 @@ export function UploadZone({
     if (selectedFiles.length === 0) return;
     if (!account) {
       alert('Connect wallet first')
+      return
+    }
+    const selectedDrive = drives.find((d: any) => String(d.id) === String(selectedDriveId))
+    const selectedRole = String(selectedDrive?.my_role || '')
+    const canWriteToDrive = selectedRole === 'admin' || selectedRole === 'editor'
+    if (selectedDrive && !canWriteToDrive) {
+      alert('You only have viewer access on this drive. Select a drive where you are admin/editor to upload.')
       return
     }
     setIsUploading(true);
@@ -241,7 +265,7 @@ export function UploadZone({
               >
                 {drives.map((drive) => (
                   <option key={String(drive.id)} value={String(drive.id)}>
-                    {drive.name} {drive.personal ? '(Default)' : ''}
+                    {drive.name} {drive.personal ? '(Default)' : ''} [{String(drive.my_role || 'viewer')}]
                   </option>
                 ))}
               </select>

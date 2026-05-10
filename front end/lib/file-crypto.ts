@@ -5,6 +5,15 @@ type EthProvider = {
   request: (args: { method: string; params?: any[] | Record<string, any> }) => Promise<any>;
 };
 const KEY_CACHE = "cloudvault_file_keys_v1";
+const DEFAULT_METAMASK_REQUEST_TIMEOUT_MS = 180_000;
+
+function getDecryptTimeoutMs(): number {
+  const raw = (process.env.NEXT_PUBLIC_METAMASK_DECRYPT_TIMEOUT_MS || "").trim();
+  if (!raw) return DEFAULT_METAMASK_REQUEST_TIMEOUT_MS;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return DEFAULT_METAMASK_REQUEST_TIMEOUT_MS;
+  return Math.max(0, parsed);
+}
 
 function getProvider(): EthProvider {
   const eth = (window as any)?.ethereum;
@@ -37,10 +46,41 @@ export async function getMyEncryptionPublicKey(account: string): Promise<string>
 export async function decryptWithMetaMask(account: string, encryptedData: any): Promise<string> {
   const provider = getProvider();
   const payload = typeof encryptedData === "string" ? encryptedData : JSON.stringify(encryptedData);
-  return provider.request({
+  const timeoutMs = getDecryptTimeoutMs();
+  const requestPromise = provider.request({
     method: "eth_decrypt",
     params: [payload, account],
   });
+
+  try {
+    // timeoutMs <= 0 disables timeout entirely for slower user confirmations.
+    if (timeoutMs <= 0) {
+      return await requestPromise;
+    }
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      const timer = window.setTimeout(() => {
+        const err = new Error(
+          `MetaMask decryption timed out after ${Math.round(timeoutMs / 1000)}s. Unlock MetaMask and approve the decrypt request.`
+        );
+        (err as any).code = "METAMASK_DECRYPT_TIMEOUT";
+        reject(err);
+      }, timeoutMs);
+      requestPromise.finally(() => window.clearTimeout(timer));
+    });
+    return await Promise.race([requestPromise, timeoutPromise]);
+  } catch (err: any) {
+    const message = String(err?.message || "");
+    if (err?.code === 4001) {
+      throw new Error("Decryption was rejected in MetaMask.");
+    }
+    if (message.toLowerCase().includes("controller is locked")) {
+      throw new Error("MetaMask is locked. Unlock it and try again.");
+    }
+    if (err?.code === "METAMASK_DECRYPT_TIMEOUT") {
+      throw err;
+    }
+    throw new Error(message || "MetaMask decryption failed.");
+  }
 }
 
 export function encryptForPublicKey(publicKey: string, plainText: string) {

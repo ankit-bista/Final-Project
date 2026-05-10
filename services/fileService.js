@@ -38,9 +38,11 @@ export async function getWalletAddress(userId) {
  */
 export async function uploadAndRecordFile(userId, file, customFilename, description, encryption = null, options = {}) {
   const newSize = file.size || 0;
-  const walletAddress = await getWalletAddress(userId);
   const enforceQuota = process.env.ENFORCE_QUOTA_ON_UPLOAD === "true";
-  const defaultDrive = await ensureDefaultDriveForUser(userId);
+  const [walletAddress, defaultDrive] = await Promise.all([
+    getWalletAddress(userId),
+    ensureDefaultDriveForUser(userId),
+  ]);
   const targetDriveId = Number(options?.driveId || defaultDrive.id);
   const targetFolderId = options?.folderId != null && options?.folderId !== ""
     ? Number(options.folderId)

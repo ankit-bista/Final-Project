@@ -1,5 +1,5 @@
-import { blake3 } from "@noble/hashes/blake3";
-import { bytesToHex } from "@noble/hashes/utils";
+import { blake3 } from "@noble/hashes/blake3.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 
 function toUint8Array(input) {
   if (!input) return new Uint8Array(0);

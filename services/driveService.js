@@ -18,9 +18,10 @@ import {
 export async function ensureDefaultDriveForUser(userId) {
   const existing = await findPersonalDriveByOwner(userId);
   if (existing) {
+    // Keep membership/legacy assignment idempotent, but avoid quota recalculation on every request.
+    // Quota is maintained incrementally by upload/delete flows and explicit recalculation paths.
     await upsertDriveMember({ driveId: existing.id, userId, role: "admin", invitedBy: userId });
     await assignLegacyFilesToDrive(userId, existing.id);
-    await recalculateDriveUsage(existing.id);
     return existing;
   }
   const drive = await createDrive({
@@ -84,7 +85,6 @@ export async function recalculateDriveUsage(driveId) {
 }
 
 export async function listMyDrives(userId) {
-  await ensureDefaultDriveForUser(userId);
   return listDrivesForUser(userId);
 }
 

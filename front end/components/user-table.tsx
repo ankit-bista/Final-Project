@@ -34,12 +34,21 @@ export function UserTable({ users, onEdit, onDelete }: UserTableProps) {
             <TableHead>Wallet</TableHead>
             <TableHead>Role</TableHead>
             <TableHead>Storage Used</TableHead>
+            <TableHead>Utilization</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Joined</TableHead>
             <TableHead>Last Login</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
+          {users.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
+                No users found for current filters.
+              </TableCell>
+            </TableRow>
+          )}
           {users.map((user) => (
             <TableRow key={user.id} className="hover:bg-muted/50">
               <TableCell className="font-medium">{user.name}</TableCell>
@@ -66,6 +75,24 @@ export function UserTable({ users, onEdit, onDelete }: UserTableProps) {
                 </div>
               </TableCell>
               <TableCell>
+                {(() => {
+                  const quota = Number(user.storageQuota || 0)
+                  const used = Number(user.storageUsed || 0)
+                  const pct = quota > 0 ? Math.min(100, Math.round((used / quota) * 100)) : 0
+                  return (
+                    <div className="w-28">
+                      <div className="h-2 rounded bg-muted overflow-hidden">
+                        <div
+                          className={`h-full ${pct >= 90 ? 'bg-destructive' : pct >= 70 ? 'bg-primary' : 'bg-secondary'}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">{pct}%</div>
+                    </div>
+                  )
+                })()}
+              </TableCell>
+              <TableCell>
                 <div className="flex items-center gap-1">
                   {user.isActive ? (
                     <>
@@ -79,6 +106,9 @@ export function UserTable({ users, onEdit, onDelete }: UserTableProps) {
                     </>
                   )}
                 </div>
+              </TableCell>
+              <TableCell className="text-sm text-muted-foreground">
+                {formatDate(user.createdAt)}
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 {user.lastLogin ? formatDate(user.lastLogin) : 'Never'}

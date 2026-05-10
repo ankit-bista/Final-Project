@@ -138,28 +138,67 @@ export async function revokeShare({ shareId, ownerId }) {
 
 export async function getShareStats(ownerId) {
   const db = await getDb();
-  const shares = await listSentShares(ownerId);
-  const now = Date.now();
-  let active = 0;
-  let expired = 0;
-  let revoked = 0;
-  let totalAccesses = 0;
-  for (const share of shares) {
-    totalAccesses += Array.isArray(share.access_log) ? share.access_log.length : 0;
-    if (share.revoked_at) revoked += 1;
-    else if (share.expires_at && new Date(share.expires_at).getTime() < now) expired += 1;
-    else active += 1;
-  }
-  return { totalShares: shares.length, active, expired, revoked, totalAccesses };
+  const now = new Date();
+  const owner = Number(ownerId);
+  const result = await db
+    .collection("bulk_shares")
+    .aggregate([
+      { $match: { owner_id: owner } },
+      {
+        $group: {
+          _id: null,
+          totalShares: { $sum: 1 },
+          revoked: { $sum: { $cond: [{ $ne: ["$revoked_at", null] }, 1, 0] } },
+          expired: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ["$revoked_at", null] },
+                    { $ne: ["$expires_at", null] },
+                    { $lt: ["$expires_at", now] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          totalAccesses: { $sum: { $size: { $ifNull: ["$access_log", []] } } },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          totalShares: 1,
+          revoked: 1,
+          expired: 1,
+          totalAccesses: 1,
+          active: { $subtract: ["$totalShares", { $add: ["$revoked", "$expired"] }] },
+        },
+      },
+    ])
+    .toArray();
+
+  return result[0] || { totalShares: 0, active: 0, expired: 0, revoked: 0, totalAccesses: 0 };
 }
 
 export async function searchShares(ownerId, term) {
-  const shares = await listSentShares(ownerId);
   const q = String(term || "").toLowerCase().trim();
-  if (!q) return shares;
-  return shares.filter((s) => {
-    const wallet = String(s.recipient_wallet || "").toLowerCase();
-    const ids = (s.file_ids || []).join(",");
-    return wallet.includes(q) || ids.includes(q) || String(s.id).includes(q);
-  });
+  if (!q) return listSentShares(ownerId);
+
+  const db = await getDb();
+  const owner = Number(ownerId);
+  const asNumber = Number(q);
+  const numericQuery = Number.isFinite(asNumber) ? Math.floor(asNumber) : null;
+
+  const query = {
+    owner_id: owner,
+    $or: [
+      { recipient_wallet: { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" } },
+      ...(numericQuery == null ? [] : [{ id: numericQuery }, { file_ids: numericQuery }]),
+    ],
+  };
+
+  return db.collection("bulk_shares").find(query).sort({ created_at: -1 }).toArray();
 }

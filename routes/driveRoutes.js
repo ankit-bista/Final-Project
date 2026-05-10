@@ -35,6 +35,22 @@ const upload = multer({
   limits: { fileSize: 500 * 1024 * 1024 } // 500MB max
 });
 
+function mapFileResponse(f) {
+  return {
+    id: f.id,
+    filename: f.file_name,
+    cid: f.ipfs_hash,
+    size_bytes: Number(f.size_bytes || 0),
+    custom_hash: f.custom_hash || null,
+    tx_hash: f.tx_hash || null,
+    encryption: f.encryption || null,
+    drive_id: f.drive_id ?? null,
+    folder_id: f.folder_id ?? null,
+    description: f.description || "",
+    uploaded_by: f.uploaded_by ?? null,
+  };
+}
+
 
 // Middleware to check authentication
 const requireAuth = (req, res, next) => {
@@ -53,8 +69,10 @@ router.get("/me", requireAuth, async (req, res) => {
     const user = await findUserById(userId);
     if (!user) return res.status(401).json({ error: "Not authenticated" });
     await ensureDefaultDriveForUser(user.id);
-    const roleInfo = await getUserRoleAndQuota(user.id);
-    const quota = await getQuotaSnapshot(user.id);
+    const [roleInfo, quota] = await Promise.all([
+      getUserRoleAndQuota(user.id),
+      getQuotaSnapshot(user.id),
+    ]);
     res.json({
       id: user.id,
       username: user.username,
@@ -113,8 +131,15 @@ router.post("/upload", requireAuth, upload.single("file"), async (req, res) => {
     if (err?.code === "QUOTA_EXCEEDED") {
       return res.status(403).json({ error: err.message || "Storage quota exceeded" });
     }
+    if (err?.code === "DRIVE_QUOTA_EXCEEDED") {
+      return res.status(403).json({ error: err.message || "Drive quota exceeded" });
+    }
     if (err?.code === "ROLE_FORBIDDEN") {
       return res.status(403).json({ error: err.message || "Upload access denied" });
+    }
+    if (err?.code === "ACCESS_DENIED" || err?.code === "NOT_FOUND") {
+      const status = err?.code === "NOT_FOUND" ? 404 : 403;
+      return res.status(status).json({ error: err.message || "Drive access denied" });
     }
     console.error("Upload failed:", err);
     res.status(500).json({ error: "Upload failed: " + (err?.message || "Unknown error") });
@@ -147,19 +172,7 @@ router.get("/files", requireAuth, async (req, res) => {
     if (driveId) {
       await requireDriveRole(driveId, req.authUserId, ["admin", "editor", "viewer"]);
       const rows = await listFilesByDrive(driveId, folderId);
-      files = rows.map((f) => ({
-        id: f.id,
-        filename: f.file_name,
-        cid: f.ipfs_hash,
-        size_bytes: Number(f.size_bytes || 0),
-        custom_hash: f.custom_hash || null,
-        tx_hash: f.tx_hash || null,
-        encryption: f.encryption || null,
-        drive_id: f.drive_id ?? null,
-        folder_id: f.folder_id ?? null,
-        description: f.description || "",
-        uploaded_by: f.uploaded_by ?? null,
-      }));
+      files = rows.map(mapFileResponse);
     } else {
       files = await getUserFiles(req.authUserId);
     }
@@ -305,19 +318,7 @@ router.get("/api/drives/:driveId/files", requireAuth, async (req, res) => {
     const folderId = req.query?.folderId != null && req.query.folderId !== "" ? Number(req.query.folderId) : null;
     await requireDriveRole(driveId, req.authUserId, ["admin", "editor", "viewer"]);
     const files = await listFilesByDrive(driveId, folderId);
-    return res.json(files.map((f) => ({
-      id: f.id,
-      filename: f.file_name,
-      cid: f.ipfs_hash,
-      size_bytes: Number(f.size_bytes || 0),
-      custom_hash: f.custom_hash || null,
-      tx_hash: f.tx_hash || null,
-      encryption: f.encryption || null,
-      drive_id: f.drive_id ?? null,
-      folder_id: f.folder_id ?? null,
-      description: f.description || "",
-      uploaded_by: f.uploaded_by ?? null,
-    })));
+    return res.json(files.map(mapFileResponse));
   } catch (err) {
     const status = err?.code === "NOT_FOUND" ? 404 : err?.code === "ACCESS_DENIED" ? 403 : 500;
     return res.status(status).json({ error: err?.message || "Failed to list files" });

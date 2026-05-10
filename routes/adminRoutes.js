@@ -55,10 +55,21 @@ router.get("/api/admin/users", requireAdmin, async (req, res) => {
   try {
     const results = await listUsersForAdmin();
     const withUsage = await Promise.all(
-      results.map(async (u) => ({
-        ...u,
-        storage_used: await computeUsedBytes(u.id),
-      }))
+      results.map(async (u) => {
+        let storageUsed = 0;
+        try {
+          storageUsed = await computeUsedBytes(u.id);
+        } catch (usageErr) {
+          console.warn("Failed to compute user storage usage:", {
+            userId: u?.id,
+            message: usageErr?.message || usageErr,
+          });
+        }
+        return {
+          ...u,
+          storage_used: Number(storageUsed || 0),
+        };
+      })
     );
     res.json(withUsage);
   } catch (err) {

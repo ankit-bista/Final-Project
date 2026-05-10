@@ -15,6 +15,8 @@ import { CommentNotificationsPanel } from '@/components/users/comment-notificati
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [searchQuery, setSearchQuery] = useState('')
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'uploader' | 'commenter'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
   const [outgoingShares, setOutgoingShares] = useState<any[]>([])
   const [commentNotifications, setCommentNotifications] = useState<any[]>([])
   const [editingUserId, setEditingUserId] = useState<string | null>(null)
@@ -43,16 +45,22 @@ export default function UsersPage() {
   }
 
   const fetchActivity = async () => {
-    try {
-      const [sharesRes, commentsRes] = await Promise.all([
-        api.get('/shares/outgoing'),
-        api.get('/notifications/comments?limit=20'),
-      ])
-      setOutgoingShares(sharesRes.data || [])
-      setCommentNotifications(commentsRes.data || [])
-    } catch (err) {
-      console.error('Failed to fetch share/comment activity', err)
+    const [sharesRes, commentsRes] = await Promise.allSettled([
+      api.get('/shares/outgoing'),
+      api.get('/notifications/comments?limit=20'),
+    ])
+
+    if (sharesRes.status === 'fulfilled') {
+      setOutgoingShares(sharesRes.value.data || [])
+    } else {
+      console.error('Failed to fetch outgoing shares', sharesRes.reason)
       setOutgoingShares([])
+    }
+
+    if (commentsRes.status === 'fulfilled') {
+      setCommentNotifications(commentsRes.value.data || [])
+    } else {
+      console.error('Failed to fetch comment notifications', commentsRes.reason)
       setCommentNotifications([])
     }
   }
@@ -62,9 +70,30 @@ export default function UsersPage() {
     fetchActivity()
   }, [])
 
-  const filteredUsers = users.filter((user) =>
-    user.name.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredUsers = users.filter((user) => {
+    const query = searchQuery.trim().toLowerCase()
+    const matchesQuery =
+      !query ||
+      user.name.toLowerCase().includes(query) ||
+      user.walletAddress.toLowerCase().includes(query)
+    const matchesRole = roleFilter === 'all' ? true : user.role === roleFilter
+    const matchesStatus =
+      statusFilter === 'all'
+        ? true
+        : statusFilter === 'active'
+          ? user.isActive
+          : !user.isActive
+
+    return matchesQuery && matchesRole && matchesStatus
+  })
+
+  const totalUsers = users.length
+  const activeUsers = users.filter((u) => u.isActive).length
+  const adminUsers = users.filter((u) => u.role === 'admin').length
+  const uploaderUsers = users.filter((u) => u.role === 'uploader').length
+  const totalUsedBytes = users.reduce((sum, u) => sum + Number(u.storageUsed || 0), 0)
+  const totalQuotaBytes = users.reduce((sum, u) => sum + Number(u.storageQuota || 0), 0)
+  const utilizationPct = totalQuotaBytes > 0 ? Math.min(100, Math.round((totalUsedBytes / totalQuotaBytes) * 100)) : 0
 
   const handleDeleteUser = async (userId: string) => {
     try {
@@ -102,17 +131,78 @@ export default function UsersPage() {
       <BreadcrumbNav items={[{ label: 'Users' }]} />
       
       <div className="p-6 space-y-6">
-        {/* Header with action */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-2xl font-bold text-foreground mb-1">User Management</h2>
             <p className="text-muted-foreground">
-              Manage all users in the system. Total: {users.length} users
+              Manage roles, quota, and access health across all users.
             </p>
+          </div>
+          <Button variant="outline" onClick={fetchUsers}>Refresh</Button>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="rounded-lg border p-4">
+            <p className="text-xs text-muted-foreground">Total users</p>
+            <p className="text-2xl font-semibold">{totalUsers}</p>
+          </div>
+          <div className="rounded-lg border p-4">
+            <p className="text-xs text-muted-foreground">Active users</p>
+            <p className="text-2xl font-semibold">{activeUsers}</p>
+          </div>
+          <div className="rounded-lg border p-4">
+            <p className="text-xs text-muted-foreground">Admins</p>
+            <p className="text-2xl font-semibold">{adminUsers}</p>
+          </div>
+          <div className="rounded-lg border p-4">
+            <p className="text-xs text-muted-foreground">Uploaders</p>
+            <p className="text-2xl font-semibold">{uploaderUsers}</p>
+          </div>
+          <div className="rounded-lg border p-4">
+            <p className="text-xs text-muted-foreground">Storage utilization</p>
+            <p className="text-2xl font-semibold">{utilizationPct}%</p>
           </div>
         </div>
 
-        {/* User table */}
+        <div className="grid gap-3 md:grid-cols-4">
+          <Input
+            placeholder="Search by username or wallet"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <Select value={roleFilter} onValueChange={(v: any) => setRoleFilter(v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Role filter" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All roles</SelectItem>
+              <SelectItem value="admin">Admin</SelectItem>
+              <SelectItem value="uploader">Uploader</SelectItem>
+              <SelectItem value="commenter">Commenter</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Status filter" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setSearchQuery('')
+              setRoleFilter('all')
+              setStatusFilter('all')
+            }}
+          >
+            Clear filters
+          </Button>
+        </div>
+
         <UserTable
           users={filteredUsers}
           onEdit={handleEditUser}

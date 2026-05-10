@@ -13,11 +13,12 @@ import encryptionRoutes from "./routes/encryption.js";
 import sharingRoutes from "./routes/sharing.js";
 import { ensureUserRoleSchema } from "./services/userRoleService.js";
 import { ensureCommentsSchema } from "./services/commentService.js";
-import { pingDb } from "./services/database.js";
+import { ensureDbIndexes, pingDb } from "./services/database.js";
 
 const app = express();
 ensureUserRoleSchema().catch((err) => console.warn("Role schema init warning:", err?.message || err));
 ensureCommentsSchema().catch((err) => console.warn("Comments schema init warning:", err?.message || err));
+ensureDbIndexes().catch((err) => console.warn("DB index init warning:", err?.message || err));
 
 // Next.js rewrites proxy to this server; trust X-Forwarded-* for cookies / sessions
 app.set("trust proxy", 1);
