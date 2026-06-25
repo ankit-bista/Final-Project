@@ -9,7 +9,6 @@ import { ViewToggle } from '@/components/view-toggle'
 import { Button } from '@/components/ui/button'
 import api from '@/lib/api'
 import { useWeb3 } from '@/context/web3-context'
-import { FileViewerModal } from '@/components/file-viewer-modal'
 import { FileCommentsPanel } from '@/components/file-comments-panel'
 import { MessageSquare } from 'lucide-react'
 import { decryptBlobWithWallet } from '@/lib/file-crypto'
@@ -21,7 +20,6 @@ export default function SharedPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [files, setFiles] = useState<any[]>([])
-  const [viewer, setViewer] = useState<{ open: boolean; fileId?: string; fileName?: string; url?: string }>({ open: false })
   const [comments, setComments] = useState<{ open: boolean; fileId?: string; fileName?: string }>({ open: false })
 
   const fetchShared = async () => {
@@ -92,10 +90,6 @@ export default function SharedPage() {
       alert('Failed to get download link');
     }
   }
-  const handleViewClick = async (id: string) => {
-    const file = files.find((f) => f.id === id)
-    setViewer({ open: true, fileId: id, fileName: file?.name })
-  }
   const handleOpenComments = (id: string) => {
     const file = files.find((f) => f.id === id)
     setComments({ open: true, fileId: id, fileName: file?.name })
@@ -123,7 +117,6 @@ export default function SharedPage() {
                 selectedFiles={selectedFiles}
                 onSelectFile={handleSelectFile}
                 onDownload={handleDownloadClick}
-                onView={handleViewClick}
               />
             ) : (
               <FileList
@@ -133,7 +126,6 @@ export default function SharedPage() {
                   setSelectedFiles((prev) => (selected ? [...prev, id] : prev.filter((x) => x !== id)))
                 }
                 onDownload={handleDownloadClick}
-                onView={handleViewClick}
               />
             )}
             <div className="pt-4">
@@ -150,13 +142,6 @@ export default function SharedPage() {
           </div>
         )}
       </div>
-      <FileViewerModal
-        open={viewer.open}
-        onOpenChange={(open) => setViewer((p) => ({ ...p, open }))}
-        fileId={viewer.fileId}
-        fileName={viewer.fileName}
-        viewUrl={viewer.url}
-      />
       <FileCommentsPanel
         open={comments.open}
         onOpenChange={(open) => setComments((p) => ({ ...p, open }))}

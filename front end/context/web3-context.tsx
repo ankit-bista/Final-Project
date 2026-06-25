@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import { BrowserProvider } from 'ethers'
 import api from '../lib/api'
 import { getMyEncryptionPublicKey } from '@/lib/file-crypto'
+import { getApiErrorMessage } from '@/lib/error-message'
 
 interface Web3ContextType {
   isConnected: boolean
@@ -16,10 +17,11 @@ interface Web3ContextType {
   usedBytes: number
   remainingBytes: number
   needsUsername: boolean
-  connectWallet: () => Promise<void>
+  connectWallet: () => Promise<boolean>
   disconnectWallet: () => void
   saveUsername: (username: string) => Promise<void>
   isConnecting: boolean
+  isSessionReady: boolean
   error: string | null
 }
 
@@ -37,13 +39,14 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
   const [remainingBytes, setRemainingBytes] = useState(0)
   const [needsUsername, setNeedsUsername] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
+  const [isSessionReady, setIsSessionReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const hasMetaMask = () =>
     typeof window !== 'undefined' && typeof (window as any).ethereum !== 'undefined'
 
-  const connectWallet = useCallback(async () => {
-    if (!hasMetaMask()) { setError('MetaMask is not installed'); return }
+  const connectWallet = useCallback(async (): Promise<boolean> => {
+    if (!hasMetaMask()) { setError('MetaMask is not installed'); return false }
     setIsConnecting(true)
     setError(null)
     try {
@@ -78,25 +81,14 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
         } catch (e) {
           console.warn('Could not register MetaMask encryption key', e)
         }
+        return true
       }
-    } catch (err: any) {
-      const data = err?.response?.data
-      const serverMsg =
-        typeof data?.error === 'string'
-          ? data.error
-          : data && typeof data === 'object' && 'message' in data && typeof (data as any).message === 'string'
-            ? (data as any).message
-            : null
-      const isNetwork = err?.message === 'Network Error' || err?.code === 'ERR_NETWORK'
-      setError(
-        err?.code === 4001
-          ? 'Connection rejected by user'
-          : isNetwork
-            ? 'Cannot reach the API. Start the backend (npm start in the project root) and ensure Next.js rewrites point to it (BACKEND_URL / port 5000).'
-            : serverMsg || err?.message || 'Failed to connect wallet'
-      )
+      return false
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Failed to connect wallet'))
       setIsConnected(false)
       setAccount(null)
+      return false
     } finally {
       setIsConnecting(false)
     }
@@ -123,9 +115,13 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const saveUsername = useCallback(async (chosen: string) => {
-    const res = await api.post('/auth/username', { username: chosen })
-    setUsername(res.data.username)
-    setNeedsUsername(false)
+    try {
+      const res = await api.post('/auth/username', { username: chosen })
+      setUsername(res.data.username)
+      setNeedsUsername(false)
+    } catch (err: unknown) {
+      throw new Error(getApiErrorMessage(err, 'Failed to save username'))
+    }
   }, [])
 
   // Restore session on page reload
@@ -153,7 +149,11 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
             await api.post('/auth/logout')
           }
         }
-      } catch { console.log('No existing session') }
+      } catch {
+        // No active session
+      } finally {
+        setIsSessionReady(true)
+      }
     }
     checkConnection()
   }, [])
@@ -162,8 +162,14 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
     if (!hasMetaMask() || !account) return
     const ethereum = (window as any).ethereum
     const onAccountsChanged = (newAccounts: string[]) => {
-      if (newAccounts.length === 0) void disconnectWallet()
-      else setAccount(newAccounts[0])
+      if (newAccounts.length === 0) {
+        void disconnectWallet()
+        return
+      }
+      // Session is tied to the wallet that signed in — switching accounts requires re-auth.
+      if (newAccounts[0]?.toLowerCase() !== account?.toLowerCase()) {
+        void disconnectWallet()
+      }
     }
     const onChainChanged = (newChainId: string) => {
       setChainId(parseInt(newChainId, 16))
@@ -177,7 +183,7 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
   }, [account, disconnectWallet])
 
   return (
-    <Web3Context.Provider value={{ isConnected, account, chainId, balance, username, role, quotaBytes, usedBytes, remainingBytes, needsUsername, connectWallet, disconnectWallet, saveUsername, isConnecting, error }}>
+    <Web3Context.Provider value={{ isConnected, account, chainId, balance, username, role, quotaBytes, usedBytes, remainingBytes, needsUsername, connectWallet, disconnectWallet, saveUsername, isConnecting, isSessionReady, error }}>
       {children}
     </Web3Context.Provider>
   )

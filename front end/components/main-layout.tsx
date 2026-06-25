@@ -3,12 +3,14 @@
 import { ReactNode } from 'react'
 import { Sidebar } from '@/components/sidebar'
 import { Header } from '@/components/header'
+import { AuthGate } from '@/components/auth-gate'
 
 interface MainLayoutProps {
   children: ReactNode
   title?: string
   isAdmin?: boolean
   onSearch?: (query: string) => void
+  requireAuth?: boolean
 }
 
 export function MainLayout({
@@ -16,8 +18,9 @@ export function MainLayout({
   title,
   isAdmin = false,
   onSearch,
+  requireAuth = true,
 }: MainLayoutProps) {
-  return (
+  const layout = (
     <div className="flex h-screen bg-background">
       <Sidebar isAdmin={isAdmin} />
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -28,4 +31,7 @@ export function MainLayout({
       </div>
     </div>
   )
+
+  if (!requireAuth) return layout
+  return <AuthGate>{layout}</AuthGate>
 }

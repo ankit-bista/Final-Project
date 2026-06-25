@@ -1,8 +1,12 @@
 'use client'
 
-import { PublicLanding } from '@/components/public-landing'
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 
-export default function LandingPage() {
-  return <PublicLanding />
+export default function LegacyLandingRedirect() {
+  const router = useRouter()
+  useEffect(() => {
+    router.replace('/')
+  }, [router])
+  return null
 }
-

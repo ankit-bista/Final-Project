@@ -27,85 +27,123 @@ const contractsConfig = {
 
 class BlockchainService {
   constructor() {
+    this.initialized = false;
+    this.provider = null;
+    this.wallet = null;
+    this.storageContract = null;
+    this.driveContract = null;
+    this.isMocked = process.env.USE_REAL_CONTRACTS !== "true";
+    this.initPromise = this.init();
+  }
+
+  async init() {
     try {
+      const rpcUrl = process.env.RPC_URL || "http://127.0.0.1:8545";
+      const privateKey = process.env.ADMIN_PRIVATE_KEY || "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+
       this.provider = new ethers.JsonRpcProvider(rpcUrl);
       this.wallet = new ethers.Wallet(privateKey, this.provider);
       
-      this.storageContract = new ethers.Contract(contractsConfig.storageAllocationAddr, storageAllocationAbi, this.wallet);
-      this.driveContract = new ethers.Contract(contractsConfig.driveV2Addr, driveV2Abi, this.wallet);
-      // We operate in "mock" contract mode if configured, but we will still send REAL transactions to form blocks
-      this.isMocked = process.env.USE_REAL_CONTRACTS !== "true";
+      const storageAllocationAddr = process.env.STORAGE_ALLOC_CONTRACT || "0x0000000000000000000000000000000000000001";
+      const driveV2Addr = process.env.DRIVE_V2_CONTRACT || "0x0000000000000000000000000000000000000002";
+      
+      this.storageContract = new ethers.Contract(storageAllocationAddr, storageAllocationAbi, this.wallet);
+      this.driveContract = new ethers.Contract(driveV2Addr, driveV2Abi, this.wallet);
+      this.initialized = true;
+      console.log("BlockchainService initialized successfully");
     } catch (e) {
-      console.error("Error initializing BlockchainService:", e);
+      console.error("Error initializing BlockchainService:", e.message || e);
+      this.initialized = false;
+    }
+  }
+
+  async ensureInitialized() {
+    if (!this.initialized) {
+      await this.initPromise;
+    }
+    if (!this.initialized) {
+      throw new Error("Blockchain service failed to initialize");
     }
   }
 
   // Quota Management
   async checkQuota(userAddress, fileSizeBytes) {
-    if (this.isMocked) return true; // Accept all in mock mode
+    if (this.isMocked) return true;
+    
     try {
+      await this.ensureInitialized();
       const stats = await this.storageContract.getQuotaStats(userAddress);
-      // Ensure remaining bytes can handle the file
-      if (stats.remainingBytes < fileSizeBytes) {
-        return false;
-      }
-      return true;
+      return (stats.remainingBytes ?? stats[3]) >= fileSizeBytes;
     } catch (error) {
-      console.error("Failed to check quota:", error);
+      console.error("Failed to check quota:", error.message || error);
       return false;
     }
   }
 
   async updateQuotaAndRecordFile(userAddress, fileId, customHash, fileSizeBytes) {
     if (this.isMocked) {
-      console.log(`[DEV MODE] Anchoring file ${fileId} to blockchain to form a block...`);
+      console.log(`[DEV MODE] Anchoring file ${fileId} to blockchain...`);
       try {
+        await this.ensureInitialized();
         const dataHex = ethers.hexlify(ethers.toUtf8Bytes(`RECORD_FILE|${fileId}|${customHash}|${fileSizeBytes}`));
         const tx = await this.wallet.sendTransaction({
           to: userAddress || this.wallet.address,
           value: 0,
           data: dataHex
         });
-        await tx.wait(); // Forms the block!
-        console.log(`[DEV MODE] Block formed successfully! TxHash: ${tx.hash}`);
+        await tx.wait();
+        console.log(`[DEV MODE] Block formed! TxHash: ${tx.hash}`);
         return { txHash: tx.hash, fileTxHash: tx.hash };
       } catch (err) {
-        console.warn(`[DEV MODE] Failed to form block via local transaction. Is your local blockchain (e.g. Hardhat) running?`, err.message);
+        console.warn(`[DEV MODE] Block formation failed:`, err.message);
       }
       return { txHash: null, fileTxHash: null };
     }
     
-    // In production, we'd probably bundle these in a single proxy contract call,
-    // but here we demonstrate the specified algorithm step
-    const tx1 = await this.storageContract.updateQuotaAfterUpload(userAddress, fileSizeBytes);
-    await tx1.wait();
-
-    const tx2 = await this.driveContract.recordFile(userAddress, fileId, customHash, fileSizeBytes);
-    await tx2.wait();
-
-    return { quotaTxHash: tx1.hash, fileTxHash: tx2.hash, txHash: tx2.hash };
+    try {
+      await this.ensureInitialized();
+      const tx1 = await this.storageContract.updateQuotaAfterUpload(userAddress, fileSizeBytes);
+      await tx1.wait();
+      const tx2 = await this.driveContract.recordFile(userAddress, fileId, customHash, fileSizeBytes);
+      await tx2.wait();
+      return { quotaTxHash: tx1.hash, fileTxHash: tx2.hash, txHash: tx2.hash };
+    } catch (err) {
+      console.error("Failed to update quota and record file:", err.message || err);
+      throw err;
+    }
   }
 
   async refundQuota(userAddress, fileSizeBytes) {
     if (this.isMocked) {
       try {
+        await this.ensureInitialized();
         const dataHex = ethers.hexlify(ethers.toUtf8Bytes(`REFUND_QUOTA|${fileSizeBytes}`));
         const tx = await this.wallet.sendTransaction({ to: userAddress || this.wallet.address, value: 0, data: dataHex });
         await tx.wait();
-      } catch (err) { }
+      } catch (err) {
+        console.warn("Mock refund failed:", err.message);
+      }
       return;
     }
-    const tx = await this.storageContract.refundQuota(userAddress, fileSizeBytes);
-    await tx.wait();
+    try {
+      await this.ensureInitialized();
+      const tx = await this.storageContract.refundQuota(userAddress, fileSizeBytes);
+      await tx.wait();
+    } catch (err) {
+      console.error("Failed to refund quota:", err.message || err);
+      throw err;
+    }
   }
 
   // Action Access check
   async checkPermission(userAddress, fileId, action) {
     if (this.isMocked) return true;
     try {
+      await this.ensureInitialized();
       return await this.driveContract.canUserAccessFile(userAddress, fileId, action);
     } catch (error) {
-       return false;
+      console.warn("Permission check failed:", error.message || error);
+      return false;
     }
   }
 
@@ -113,21 +151,30 @@ class BlockchainService {
   async shareFile(fileId, recipientAddress, role, expiryDays) {
     if (this.isMocked) {
       try {
+        await this.ensureInitialized();
         const dataHex = ethers.hexlify(ethers.toUtf8Bytes(`SHARE|${fileId}|${recipientAddress}|${role}`));
         const tx = await this.wallet.sendTransaction({ to: recipientAddress || this.wallet.address, value: 0, data: dataHex });
         await tx.wait();
         console.log(`[DEV MODE] Share transaction mined! TxHash: ${tx.hash}`);
-      } catch (err) { }
+      } catch (err) {
+        console.warn("Mock share failed:", err.message);
+      }
       return;
     }
-    const tx = await this.driveContract.shareFile(fileId, recipientAddress, role, expiryDays);
-    await tx.wait();
+    try {
+      await this.ensureInitialized();
+      const tx = await this.driveContract.shareFile(fileId, recipientAddress, role, expiryDays);
+      await tx.wait();
+    } catch (err) {
+      console.error("Failed to share file:", err.message || err);
+      throw err;
+    }
   }
 
-  // Persist encrypted AES key metadata on-chain as transaction calldata.
-  // Works in both mock and real modes without requiring ABI changes.
+  // Persist encrypted AES key metadata on-chain
   async storeEncryptedKey(fileId, recipientAddress, encryptedKeyPayload) {
     try {
+      await this.ensureInitialized();
       const payload = typeof encryptedKeyPayload === "string"
         ? encryptedKeyPayload
         : JSON.stringify(encryptedKeyPayload || {});
@@ -143,7 +190,7 @@ class BlockchainService {
       await tx.wait();
       return tx.hash;
     } catch (err) {
-      console.warn("storeEncryptedKey transaction failed:", err?.message || err);
+      console.warn("storeEncryptedKey failed:", err?.message || err);
       return null;
     }
   }
@@ -153,8 +200,14 @@ class BlockchainService {
       console.log(`[MOCK] Revoked access to file ${fileId} for ${userAddress}`);
       return;
     }
-    const tx = await this.driveContract.revokeAccess(fileId, userAddress);
-    await tx.wait();
+    try {
+      await this.ensureInitialized();
+      const tx = await this.driveContract.revokeAccess(fileId, userAddress);
+      await tx.wait();
+    } catch (err) {
+      console.error("Failed to revoke access:", err.message || err);
+      throw err;
+    }
   }
 
   // Admin Functions
@@ -163,8 +216,14 @@ class BlockchainService {
       console.log(`[MOCK] Allocated pool ${poolName} with ${bytesAmount} bytes`);
       return;
     }
-    const tx = await this.storageContract.allocatePool(poolName, bytesAmount);
-    await tx.wait();
+    try {
+      await this.ensureInitialized();
+      const tx = await this.storageContract.allocatePool(poolName, bytesAmount);
+      await tx.wait();
+    } catch (err) {
+      console.error("Failed to allocate pool:", err.message || err);
+      throw err;
+    }
   }
 
   async allocateUserQuota(poolName, userAddress, bytesAmount) {
@@ -172,8 +231,14 @@ class BlockchainService {
       console.log(`[MOCK] Allocated ${bytesAmount} bytes to ${userAddress} from pool ${poolName}`);
       return;
     }
-    const tx = await this.storageContract.allocateUserQuota(poolName, userAddress, bytesAmount);
-    await tx.wait();
+    try {
+      await this.ensureInitialized();
+      const tx = await this.storageContract.allocateUserQuota(poolName, userAddress, bytesAmount);
+      await tx.wait();
+    } catch (err) {
+      console.error("Failed to allocate user quota:", err.message || err);
+      throw err;
+    }
   }
 }
 

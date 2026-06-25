@@ -13,7 +13,6 @@ interface FileGridProps {
   onDelete?: (id: string) => void
   onShare?: (id: string) => void
   onDownload?: (id: string) => void
-  onView?: (id: string) => void
 }
 
 export function FileGrid({
@@ -25,7 +24,6 @@ export function FileGrid({
   onDelete,
   onShare,
   onDownload,
-  onView,
 }: FileGridProps) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
@@ -45,7 +43,6 @@ export function FileGrid({
             onDelete={onDelete}
             onShare={onShare}
             onDownload={onDownload}
-            onView={onView}
           />
         </FileContextMenu>
       ))}

@@ -3,7 +3,7 @@
 import { FileItem, formatBytes, formatDate } from '@/lib/mock-data'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
-import { Folder, File, Star, Share2, MoreVertical, Eye, Copy } from 'lucide-react'
+import { Folder, File, Star, Share2, Download, Copy } from 'lucide-react'
 import { BlockchainBadge, IPFSBadge } from '@/components/blockchain-badge'
 import { FileContextMenu } from '@/components/file-context-menu'
 import { cn } from '@/lib/utils'
@@ -17,7 +17,6 @@ interface FileListProps {
   onDelete?: (id: string) => void
   onShare?: (id: string) => void
   onDownload?: (id: string) => void
-  onView?: (id: string) => void
 }
 
 export function FileList({
@@ -29,7 +28,6 @@ export function FileList({
   onDelete,
   onShare,
   onDownload,
-  onView
 }: FileListProps) {
   const copyTxHash = async (txHash?: string) => {
     if (!txHash) return
@@ -117,7 +115,14 @@ export function FileList({
                 </div>
               </td>
               <td className="px-4 py-3 text-sm text-muted-foreground">
-                {file.type === 'folder' ? '—' : formatBytes(file.size || 0)}
+                {file.type === 'folder' ? (
+                  '—'
+                ) : (
+                  <div className="space-y-0.5">
+                    <div>{formatBytes(file.size || 0)}</div>
+                    {file.uploadedByName && <div className="text-xs">Uploaded by: {file.uploadedByName}</div>}
+                  </div>
+                )}
               </td>
               <td className="px-4 py-3 text-sm">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -155,12 +160,20 @@ export function FileList({
               </td>
               <td className="px-4 py-3 text-right">
                 <div className="flex items-center justify-end gap-1">
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); onView?.(file.id) }}>
-                    <Eye className="w-4 h-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => e.stopPropagation()}>
-                    <MoreVertical className="w-4 h-4" />
-                  </Button>
+                  {onDownload && file.type !== 'folder' && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onDownload(file.id)
+                      }}
+                      title="Download"
+                    >
+                      <Download className="w-4 h-4" />
+                    </Button>
+                  )}
                 </div>
               </td>
             </tr>

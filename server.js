@@ -9,7 +9,6 @@ import driveRoutes from "./routes/driveRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import blockchainRoutes from "./routes/blockchainRoutes.js";
 import activityRoutes from "./routes/activityRoutes.js";
-import encryptionRoutes from "./routes/encryption.js";
 import sharingRoutes from "./routes/sharing.js";
 import { ensureUserRoleSchema } from "./services/userRoleService.js";
 import { ensureCommentsSchema } from "./services/commentService.js";
@@ -72,7 +71,6 @@ app.use(driveRoutes);
 app.use(adminRoutes);
 app.use(blockchainRoutes);
 app.use(activityRoutes);
-app.use("/api/encryption", encryptionRoutes);
 app.use("/api/shares", sharingRoutes);
 
 const PORT = process.env.PORT || 5000;

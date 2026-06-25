@@ -7,21 +7,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Bell, User } from 'lucide-react'
 import { useWeb3 } from '@/context/web3-context'
-import { WalletConnectPrompt } from '@/components/wallet-connect-prompt'
+import { useRouter } from 'next/navigation'
 
 export default function SettingsPage() {
-  const { isConnected, account, disconnectWallet, username, error } = useWeb3()
-
-  if (!isConnected) {
-    return (
-      <MainLayout title="Settings">
-        <WalletConnectPrompt
-          title="Sign in to open Settings"
-          description="Connect your MetaMask wallet and sign a message — same as the home screen — to manage your account."
-        />
-      </MainLayout>
-    )
-  }
+  const router = useRouter()
+  const { account, disconnectWallet, username } = useWeb3()
 
   return (
     <MainLayout title="Settings">
@@ -59,14 +49,20 @@ export default function SettingsPage() {
               <Input type="text" placeholder="0x..." value={account ?? ''} disabled readOnly />
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" className="flex-1 min-w-[120px]" onClick={disconnectWallet}>
+              <Button
+                variant="outline"
+                className="flex-1 min-w-[120px]"
+                onClick={async () => {
+                  await disconnectWallet()
+                  router.push('/')
+                }}
+              >
                 Disconnect
               </Button>
               <Button className="bg-primary hover:opacity-90 flex-1 min-w-[120px]" disabled>
                 Save Changes
               </Button>
             </div>
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
           </CardContent>
         </Card>
 

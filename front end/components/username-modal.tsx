@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useWeb3 } from '@/context/web3-context'
+import { getApiErrorMessage } from '@/lib/error-message'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { UserCheck } from 'lucide-react'
@@ -38,8 +39,8 @@ export function UsernameModal({ forceVisible = false, onClose }: UsernameModalPr
     try {
       await saveUsername(trimmed)
       onClose?.() // close if opened manually from header
-    } catch (err: any) {
-      setError(err?.response?.data?.error || 'Failed to save username')
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Failed to save username'))
     } finally {
       setLoading(false)
     }

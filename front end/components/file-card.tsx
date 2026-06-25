@@ -2,7 +2,7 @@
 
 import { FileItem } from '@/lib/mock-data'
 import { formatBytes, formatDate } from '@/lib/mock-data'
-import { Folder, File, Star, Share2, MoreVertical, Download, Trash2, Eye, Zap, Copy } from 'lucide-react'
+import { Folder, File, Share2, MoreVertical, Download, Trash2, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { BlockchainBadge, IPFSBadge } from '@/components/blockchain-badge'
 import {
@@ -23,7 +23,6 @@ interface FileCardProps {
   onDelete?: (id: string) => void
   onShare?: (id: string) => void
   onDownload?: (id: string) => void
-  onView?: (id: string) => void
 }
 
 export function FileCard({
@@ -35,27 +34,12 @@ export function FileCard({
   onDelete,
   onShare,
   onDownload,
-  onView,
 }: FileCardProps) {
   const isFolder = file.type === 'folder'
 
   const handleDoubleClick = () => {
     if (isFolder && onFolderOpen) {
       onFolderOpen(file)
-    }
-  }
-
-  // View on IPFS gateway
-  const handleViewIPFS = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (onView) {
-      onView(file.id)
-    } else if (file.cid) {
-      window.open(`https://ipfs.io/ipfs/${file.cid}`, '_blank')
-    } else if (file.ipfsHash) {
-      window.open(`https://ipfs.io/ipfs/${file.ipfsHash}`, '_blank')
-    } else {
-      onView?.(file.id)
     }
   }
 
@@ -106,29 +90,13 @@ export function FileCard({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-            <DropdownMenuItem onClick={handleViewIPFS}>
-              <Eye className="mr-2 h-4 w-4 text-primary" />
-              View on IPFS
-            </DropdownMenuItem>
-            {(file.cid || file.ipfsHash) && (
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation()
-                  const hash = file.cid || file.ipfsHash
-                  window.open(`https://etherscan.io/search?q=${hash}`, '_blank')
-                }}
-              >
-                <Zap className="mr-2 h-4 w-4 text-accent" />
-                View on Blockchain
-              </DropdownMenuItem>
-            )}
             {file.txHash && (
               <DropdownMenuItem onClick={handleCopyTxHash}>
                 <Copy className="mr-2 h-4 w-4" />
                 Copy Tx Hash
               </DropdownMenuItem>
             )}
-            {(onDownload || onShare || onDelete) && <DropdownMenuSeparator />}
+            {(onDownload || onShare || onDelete) && file.txHash && <DropdownMenuSeparator />}
             {onDownload && (
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDownload(file.id) }}>
                 <Download className="mr-2 h-4 w-4" />
@@ -164,6 +132,7 @@ export function FileCard({
       <div className="space-y-1 text-xs text-muted-foreground mb-3">
         <p>{file.modified ? new Date(file.modified).toLocaleDateString() : ''}</p>
         {!isFolder && file.size && <p>{typeof file.size === 'number' ? formatBytes(file.size) : file.size}</p>}
+        {!isFolder && file.uploadedByName && <p>Uploaded by: {file.uploadedByName}</p>}
       </div>
 
       {/* Footer badges */}

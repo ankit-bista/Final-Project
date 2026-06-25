@@ -28,10 +28,15 @@ router.get("/auth/nonce", async (req, res) => {
 
   const normalizedAddress = address.toLowerCase();
   
-  // Generate a random nonce
-  const nonce = `Welcome to Blockchain Drive! To authenticate, please sign this random nonce: ${crypto.randomBytes(16).toString("hex")}`;
+  // Validate address format (basic check)
+  if (!/^0x[a-fA-F0-9]{40}$/.test(normalizedAddress)) {
+    return res.status(400).json({ error: "Invalid Ethereum address format" });
+  }
 
   try {
+    // Generate a random nonce
+    const nonce = `Welcome to Blockchain Drive! To authenticate, please sign this random nonce: ${crypto.randomBytes(16).toString("hex")}`;
+
     const user = await findUserByWallet(normalizedAddress);
     if (user) {
       await updateUserNonceByWallet(normalizedAddress, nonce);
@@ -40,8 +45,8 @@ router.get("/auth/nonce", async (req, res) => {
     }
     res.json({ nonce });
   } catch (err) {
-    console.error("Database query error:", err);
-    return res.status(500).json({ error: "Failed to fetch user" });
+    console.error("Database error in /auth/nonce:", err.message || err);
+    return res.status(500).json({ error: "Failed to generate nonce. Please try again." });
   }
 });
 
@@ -56,56 +61,67 @@ router.post("/auth/verify", async (req, res) => {
   const normalizedAddress = address.toLowerCase();
 
   try {
-      const user = await findUserByWallet(normalizedAddress);
-      if (!user) return res.status(401).json({ error: "User not found or database error" });
-      const expectedNonce = user.nonce;
+    const user = await findUserByWallet(normalizedAddress);
+    if (!user) {
+      console.warn("User not found for wallet:", normalizedAddress);
+      return res.status(401).json({ error: "User not found or database error" });
+    }
 
-      if (!expectedNonce) {
-        return res.status(401).json({ error: "Nonce not generated for user" });
+    const expectedNonce = user.nonce;
+    if (!expectedNonce) {
+      console.warn("Nonce missing for wallet:", normalizedAddress);
+      return res.status(401).json({ error: "Nonce not generated for user" });
+    }
+
+    try {
+      // Recover address from signature
+      const recoveredAddress = ethers.verifyMessage(expectedNonce, signature);
+      
+      if (recoveredAddress.toLowerCase() !== normalizedAddress) {
+        console.warn("Signature mismatch - recovered:", recoveredAddress, "expected:", normalizedAddress);
+        return res.status(401).json({ error: "Signature verification failed" });
       }
 
-      try {
-        // Recover address from signature
-        const recoveredAddress = ethers.verifyMessage(expectedNonce, signature);
-        
-        if (recoveredAddress.toLowerCase() === normalizedAddress) {
-          req.session.userId = user.id;
-          const bootstrapAdminWallet = (process.env.MAIN_ADMIN_WALLET || "").toLowerCase();
-          if (bootstrapAdminWallet && user.wallet_address === bootstrapAdminWallet) {
-            await setAdminRole(user.id);
-          }
+      // Check admin status
+      const bootstrapAdminWallet = (process.env.MAIN_ADMIN_WALLET || "").toLowerCase();
+      if (bootstrapAdminWallet && user.wallet_address === bootstrapAdminWallet) {
+        await setAdminRole(user.id).catch(e => console.warn("Admin role error:", e?.message));
+      }
 
-          // Persist session before responding (avoids races with Express 5 / async stores)
-          req.session.save((saveErr) => {
-            if (saveErr) {
-              console.error("Session save error:", saveErr);
-              return res.status(500).json({ error: "Could not create login session" });
-            }
+      req.session.userId = user.id;
 
-            updateUserNonceById(user.id, null).catch(() => {});
-            ensureDefaultDriveForUser(user.id).catch((e) =>
-              console.warn("Default drive initialization warning:", e?.message || e)
-            );
-
-            const needsUsername =
-              !user.username ||
-              (typeof user.username === "string" && user.username.trim() === "");
-            return res.json({
-              success: true,
-              userId: user.id,
-              username: user.username || null,
-              needsUsername,
-            });
-          });
-          return;
-        } else {
-          return res.status(401).json({ error: "Signature verification failed" });
+      // Persist session before responding
+      req.session.save((saveErr) => {
+        if (saveErr) {
+          console.error("Session save error:", saveErr.message || saveErr);
+          return res.status(500).json({ error: "Could not create login session" });
         }
-      } catch (error) {
-        console.error("Signature verification error:", error);
-        return res.status(401).json({ error: "Invalid signature format" });
-      }
+
+        // Clean up nonce and initialize drive (non-blocking)
+        updateUserNonceById(user.id, null).catch(e => 
+          console.warn("Nonce cleanup warning:", e?.message || e)
+        );
+        ensureDefaultDriveForUser(user.id).catch(e =>
+          console.warn("Default drive initialization warning:", e?.message || e)
+        );
+
+        const needsUsername =
+          !user.username ||
+          (typeof user.username === "string" && user.username.trim() === "");
+        
+        res.json({
+          success: true,
+          userId: user.id,
+          username: user.username || null,
+          needsUsername,
+        });
+      });
+    } catch (error) {
+      console.error("Signature verification error:", error.message || error);
+      return res.status(401).json({ error: "Invalid signature format" });
+    }
   } catch (err) {
+    console.error("Database error in /auth/verify:", err.message || err);
     return res.status(500).json({ error: "Database error" });
   }
 });

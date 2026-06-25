@@ -7,8 +7,7 @@ import { FileGrid } from '@/components/file-grid'
 import { FileList } from '@/components/file-list'
 import { ViewToggle } from '@/components/view-toggle'
 import { UploadZone } from '@/components/upload-zone'
-import { NewFolderDialog } from '@/components/file-dialogs'
-import { FileViewerModal } from '@/components/file-viewer-modal'
+import { InviteMemberDialog, NewFolderDialog } from '@/components/file-dialogs'
 import { FileCommentsPanel } from '@/components/file-comments-panel'
 import { Button } from '@/components/ui/button'
 import { MessageSquare, Plus, Upload } from 'lucide-react'
@@ -29,7 +28,7 @@ export default function CollaborativeDrivePage() {
   const [folderPath, setFolderPath] = useState<{ id: number; name: string }[]>([])
   const [uploadOpen, setUploadOpen] = useState(false)
   const [newFolderOpen, setNewFolderOpen] = useState(false)
-  const [viewer, setViewer] = useState<{ open: boolean; fileId?: string; fileName?: string; url?: string }>({ open: false })
+  const [inviteOpen, setInviteOpen] = useState(false)
   const [comments, setComments] = useState<{ open: boolean; fileId?: string; fileName?: string }>({ open: false })
 
   const currentFolderId = folderPath.length ? folderPath[folderPath.length - 1].id : null
@@ -57,10 +56,14 @@ export default function CollaborativeDrivePage() {
       return
     }
     try {
-      const [filesRes, foldersRes] = await Promise.all([
+      const [filesRes, foldersRes, membersRes] = await Promise.all([
         api.get(`/api/drives/${driveId}/files`, { params: { folderId: folderId == null ? '' : folderId } }),
         api.get(`/api/drives/${driveId}/folders`, { params: { parentFolderId: folderId == null ? '' : folderId } }),
+        api.get(`/api/drives/${driveId}/members`),
       ])
+      const memberNameByUserId = new Map<number, string>(
+        (membersRes.data || []).map((m: any) => [Number(m.userId), String(m.username || `User ${m.userId}`)])
+      )
       setFiles(
         (filesRes.data || []).map((f: any) => ({
           id: f.id.toString(),
@@ -70,6 +73,8 @@ export default function CollaborativeDrivePage() {
           modified: new Date().toLocaleDateString(),
           shared: false,
           cid: f.cid,
+          uploadedBy: Number(f.uploaded_by || 0),
+          uploadedByName: memberNameByUserId.get(Number(f.uploaded_by || 0)) || `User ${String(f.uploaded_by || '')}`,
           txHash: f.tx_hash || null,
           isOnBlockchain: Boolean(f.tx_hash),
         }))
@@ -112,6 +117,37 @@ export default function CollaborativeDrivePage() {
     ...folderPath.map((f, idx) => ({ label: f.name, onClick: () => setFolderPath(folderPath.slice(0, idx + 1)) })),
   ]
 
+  const handleDownload = async (id: string) => {
+    if (id.startsWith('folder-')) return
+    try {
+      const file = filteredFiles.find((f) => String(f.id) === String(id))
+      const [contentRes, cryptoRes] = await Promise.all([
+        api.get(`/files/${id}/content`, { responseType: 'blob' }),
+        api.get(`/files/${id}/crypto`),
+      ])
+      const crypto = cryptoRes.data || {}
+      let outBlob: Blob = contentRes.data as Blob
+      let outName = file?.name || `file-${id}`
+      if (crypto?.isEncrypted) {
+        if (!account) throw new Error('Connect wallet first')
+        const decrypted = await decryptBlobWithWallet(account, contentRes.data as Blob, crypto.encryptedKey, crypto.iv, file?.cid)
+        const bytes = decrypted instanceof Uint8Array ? decrypted : new Uint8Array(decrypted)
+        const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+        outBlob = new Blob([buffer], { type: crypto.originalMimeType || 'application/octet-stream' })
+        outName = crypto.originalName || outName
+      }
+      const url = URL.createObjectURL(outBlob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = outName
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Download failed', err)
+      alert('Failed to download file')
+    }
+  }
+
   const handleCreateDrive = async () => {
     const name = window.prompt('Enter collaborative drive name')
     if (!name?.trim()) return
@@ -128,20 +164,28 @@ export default function CollaborativeDrivePage() {
     }
   }
 
-  const handleInvite = async () => {
+  const handleInvite = async (values: {
+    identifier: string
+    role: 'admin' | 'editor' | 'viewer'
+    quotaTransferMb: number
+    driveQuotaLimitMb: number
+  }) => {
     if (!activeDriveId) return
-    const identifier = window.prompt('Invite user (username or wallet)')
-    if (!identifier?.trim()) return
-    const roleChoice = window.prompt('Role for invited user: admin, editor, or viewer', 'viewer') || 'viewer'
-    try {
-      await api.post(`/api/drives/${activeDriveId}/invite`, {
-        identifier: identifier.trim(),
-        role: roleChoice,
+    await api.post(`/api/drives/${activeDriveId}/invite`, {
+      identifier: values.identifier,
+      role: values.role,
+      quotaTransferMb: values.quotaTransferMb,
+    })
+    const active = drives.find((d: any) => String(d.id) === String(activeDriveId))
+    const currentLimitMb = Number(active?.quota_limit_bytes || 0) / 1024 / 1024
+    if (Math.round(values.driveQuotaLimitMb) !== Math.round(currentLimitMb)) {
+      await api.post(`/api/drives/${activeDriveId}/quota`, {
+        quotaLimitBytes: Math.max(0, Number(values.driveQuotaLimitMb || 0)) * 1024 * 1024,
       })
-      alert('User invited successfully')
-    } catch (err: any) {
-      alert(err?.response?.data?.error || 'Failed to invite user')
     }
+    await fetchDrives()
+    await fetchDriveContents(activeDriveId, currentFolderId)
+    alert('User invited successfully')
   }
 
   const handleCreateFolder = async (folderName: string) => {
@@ -179,7 +223,7 @@ export default function CollaborativeDrivePage() {
             New Folder
           </Button>
           <Button variant="outline" onClick={handleCreateDrive}>New Drive</Button>
-          <Button variant="outline" onClick={handleInvite} disabled={!activeDriveId}>Invite</Button>
+          <Button variant="outline" onClick={() => setInviteOpen(true)} disabled={!activeDriveId}>Invite</Button>
           <Button variant="outline" className="gap-2" onClick={() => setUploadOpen(true)} disabled={!activeDriveId}>
             <Upload className="w-4 h-4" />
             Upload
@@ -205,34 +249,7 @@ export default function CollaborativeDrivePage() {
                 setSelectedFiles([])
               }
             }}
-            onDownload={async (id) => {
-              if (id.startsWith('folder-')) return
-              const file = filteredFiles.find((f) => String(f.id) === String(id))
-              const [contentRes, cryptoRes] = await Promise.all([
-                api.get(`/files/${id}/content`, { responseType: 'blob' }),
-                api.get(`/files/${id}/crypto`),
-              ])
-              const crypto = cryptoRes.data || {}
-              let outBlob: Blob = contentRes.data as Blob
-              let outName = file?.name || `file-${id}`
-              if (crypto?.isEncrypted) {
-                if (!account) throw new Error('Connect wallet first')
-                const decrypted = await decryptBlobWithWallet(account, contentRes.data as Blob, crypto.encryptedKey, crypto.iv, file?.cid)
-                outBlob = new Blob([decrypted], { type: crypto.originalMimeType || 'application/octet-stream' })
-                outName = crypto.originalName || outName
-              }
-              const url = URL.createObjectURL(outBlob)
-              const a = document.createElement('a')
-              a.href = url
-              a.download = outName
-              a.click()
-              URL.revokeObjectURL(url)
-            }}
-            onView={(id) => {
-              if (id.startsWith('folder-')) return
-              const file = filteredFiles.find((f) => f.id === id)
-              setViewer({ open: true, fileId: id, fileName: file?.name })
-            }}
+            onDownload={handleDownload}
           />
         ) : (
           <FileList
@@ -247,11 +264,7 @@ export default function CollaborativeDrivePage() {
                 setSelectedFiles([])
               }
             }}
-            onView={(id) => {
-              if (id.startsWith('folder-')) return
-              const file = filteredFiles.find((f) => f.id === id)
-              setViewer({ open: true, fileId: id, fileName: file?.name })
-            }}
+            onDownload={handleDownload}
           />
         )}
       </div>
@@ -276,6 +289,13 @@ export default function CollaborativeDrivePage() {
         onClose={() => setNewFolderOpen(false)}
         onCreateFolder={handleCreateFolder}
       />
+      <InviteMemberDialog
+        open={inviteOpen}
+        onOpenChange={setInviteOpen}
+        onInvite={handleInvite}
+        currentDriveQuotaUsedMb={Number(drives.find((d: any) => String(d.id) === String(activeDriveId))?.quota_used_bytes || 0) / 1024 / 1024}
+        currentDriveQuotaLimitMb={Number(drives.find((d: any) => String(d.id) === String(activeDriveId))?.quota_limit_bytes || 0) / 1024 / 1024}
+      />
       <UploadZone
         isOpen={uploadOpen}
         onClose={() => setUploadOpen(false)}
@@ -283,13 +303,6 @@ export default function CollaborativeDrivePage() {
           setUploadOpen(false)
           void fetchDriveContents(activeDriveId, currentFolderId)
         }}
-      />
-      <FileViewerModal
-        open={viewer.open}
-        onOpenChange={(open) => setViewer((p) => ({ ...p, open }))}
-        fileId={viewer.fileId}
-        fileName={viewer.fileName}
-        viewUrl={viewer.url}
       />
       <FileCommentsPanel
         open={comments.open}

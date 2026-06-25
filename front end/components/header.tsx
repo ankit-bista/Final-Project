@@ -21,7 +21,7 @@ interface HeaderProps {
 }
 
 export function Header({ title = 'My Files', onSearch }: HeaderProps) {
-  const { isConnected, account, disconnectWallet } = useWeb3()
+  const { isConnected, account, username, disconnectWallet } = useWeb3()
   const router = useRouter()
 
   const shortAddress = account
@@ -29,7 +29,6 @@ export function Header({ title = 'My Files', onSearch }: HeaderProps) {
     : null
 
   return (
-    <>
     <header className="h-16 bg-background border-b border-border flex items-center justify-between px-6 sticky top-0 z-40">
       <div>
         <h1 className="text-xl font-semibold text-foreground">{title}</h1>
@@ -45,54 +44,48 @@ export function Header({ title = 'My Files', onSearch }: HeaderProps) {
               onChange={(e) => onSearch(e.target.value)}
             />
           </div>
-        ) : !isConnected ? (
-          <p className="w-full text-center text-sm text-muted-foreground">Connect your wallet to continue</p>
         ) : (
           <div className="w-full" aria-hidden />
         )}
       </div>
 
       <div className="flex items-center gap-3">
-        <WalletConnector />
-        
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="text-foreground hover:bg-muted rounded-full">
-              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-bold">
-                <User className="w-4 h-4" />
-              </div>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            {isConnected && (
-              <>
-                <DropdownMenuLabel className="font-normal">
-                  <p className="font-semibold text-sm">Connected Wallet</p>
-                  <p className="text-xs text-muted-foreground mt-0.5 font-mono">{shortAddress}</p>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-              </>
-            )}
+        <WalletConnector redirectTo="/drive" />
 
-            <DropdownMenuItem onClick={() => router.push('/settings')} className="cursor-pointer">
-              <Settings className="w-4 h-4 mr-2" />
-              Settings
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={async () => {
-                await disconnectWallet()
-                router.push('/landing')
-              }}
-              className="cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
-            >
-              <LogOut className="w-4 h-4 mr-2" />
-              Disconnect Wallet
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {isConnected && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-foreground hover:bg-muted rounded-full">
+                <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-bold">
+                  <User className="w-4 h-4" />
+                </div>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel className="font-normal">
+                <p className="font-semibold text-sm">{username || 'Connected'}</p>
+                <p className="text-xs text-muted-foreground mt-0.5 font-mono">{shortAddress}</p>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => router.push('/settings')} className="cursor-pointer">
+                <Settings className="w-4 h-4 mr-2" />
+                Settings
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={async () => {
+                  await disconnectWallet()
+                  router.push('/')
+                }}
+                className="cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Disconnect Wallet
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
     </header>
-    </>
   )
 }

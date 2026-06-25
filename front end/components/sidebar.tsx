@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils'
 const NAV_ITEMS = [
   {
     label: 'My Drive',
-    href: '/',
+    href: '/drive',
     icon: Folder,
   },
   {

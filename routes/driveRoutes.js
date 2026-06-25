@@ -5,7 +5,7 @@ import { shareDriveWithUser, shareFileWithUser, getSharedWithUser, createExpirin
 import { getUserRoleAndQuota } from "../services/userRoleService.js";
 import { assertCanUpload, getQuotaSnapshot } from "../services/quotaService.js";
 import { addCommentToFile, listCommentsForFile } from "../services/commentService.js";
-import { getInAppViewUrl, getInAppFileContent } from "../services/fileViewService.js";
+import { getFileDownloadContent } from "../services/fileDownloadService.js";
 import { resolveRequestUserId } from "../services/devTestAuth.js";
 import {
   createDriveActivityLog,
@@ -24,6 +24,7 @@ import {
   getDriveMembersByUser,
   inviteDriveMember,
   listMyDrives,
+  deleteDriveByAdmin,
   removeDriveMemberByAdmin,
   requireDriveRole,
   updateDriveQuotaByAdmin,
@@ -146,7 +147,7 @@ router.post("/upload", requireAuth, upload.single("file"), async (req, res) => {
   }
 });
 
-// Delete a file from the drive (owner only)
+// Delete a file from the drive.
 router.post("/delete/:id", requireAuth, async (req, res) => {
   try {
     const fileId = req.params.id;
@@ -158,6 +159,12 @@ router.post("/delete/:id", requireAuth, async (req, res) => {
     await deleteFileForUser(req.authUserId, fileId);
     res.json({ success: true });
   } catch (err) {
+    if (err?.code === "NOT_FOUND") {
+      return res.status(404).json({ error: err.message || "File not found" });
+    }
+    if (err?.code === "ACCESS_DENIED") {
+      return res.status(403).json({ error: err.message || "Access denied" });
+    }
     console.error("Delete failed:", err);
     res.status(500).json({ error: "Delete failed" });
   }
@@ -232,10 +239,16 @@ router.post("/api/drives/:driveId/invite", requireAuth, async (req, res) => {
       actorUserId: req.authUserId,
       targetUserId: target.id,
       role: req.body?.role || "viewer",
+      quotaTransferBytes: Math.max(0, Number(req.body?.quotaTransferMb || 0)) * 1024 * 1024,
     });
     return res.json({ success: true, member });
   } catch (err) {
-    const status = err?.code === "NOT_FOUND" ? 404 : err?.code === "ACCESS_DENIED" ? 403 : 500;
+    const status =
+      err?.code === "NOT_FOUND"
+        ? 404
+        : err?.code === "ACCESS_DENIED" || err?.code === "QUOTA_EXCEEDED"
+          ? 403
+          : 500;
     return res.status(status).json({ error: err?.message || "Failed to invite member" });
   }
 });
@@ -269,6 +282,28 @@ router.post("/api/drives/:driveId/quota", requireAuth, async (req, res) => {
   } catch (err) {
     const status = err?.code === "NOT_FOUND" ? 404 : err?.code === "ACCESS_DENIED" ? 403 : 500;
     return res.status(status).json({ error: err?.message || "Failed to update drive quota" });
+  }
+});
+
+router.delete("/api/drives/:driveId", requireAuth, async (req, res) => {
+  try {
+    const driveId = Number(req.params.driveId);
+    const ok = await deleteDriveByAdmin({
+      driveId,
+      actorUserId: req.authUserId,
+    });
+    if (!ok) return res.status(404).json({ error: "Drive not found" });
+    return res.json({ success: true });
+  } catch (err) {
+    const status =
+      err?.code === "NOT_FOUND"
+        ? 404
+        : err?.code === "ACCESS_DENIED"
+          ? 403
+          : err?.code === "INVALID"
+            ? 400
+            : 500;
+    return res.status(status).json({ error: err?.message || "Failed to delete drive" });
   }
 });
 
@@ -325,34 +360,20 @@ router.get("/api/drives/:driveId/files", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/files/:id/view-url", requireAuth, async (req, res) => {
-  try {
-    const fileId = Number(req.params.id);
-    if (!Number.isFinite(fileId)) return res.status(400).json({ error: "Invalid file ID" });
-    const url = await getInAppViewUrl(req.authUserId, fileId);
-    res.json({ url });
-  } catch (err) {
-    if (err.code === "ACCESS_DENIED") return res.status(403).json({ error: err.message });
-    if (err.code === "NOT_FOUND") return res.status(404).json({ error: err.message });
-    console.error("View URL error:", err);
-    res.status(500).json({ error: "Failed to build viewer URL" });
-  }
-});
-
 router.get("/files/:id/content", requireAuth, async (req, res) => {
   try {
     const fileId = Number(req.params.id);
     if (!Number.isFinite(fileId)) return res.status(400).json({ error: "Invalid file ID" });
 
-    const result = await getInAppFileContent(req.authUserId, fileId);
+    const result = await getFileDownloadContent(req.authUserId, fileId);
     res.setHeader("Content-Type", result.contentType);
-    res.setHeader("Content-Disposition", `inline; filename="${result.fileName}"`);
+    res.setHeader("Content-Disposition", `attachment; filename="${result.fileName}"`);
     return res.send(result.buffer);
   } catch (err) {
     if (err.code === "ACCESS_DENIED") return res.status(403).json({ error: err.message });
     if (err.code === "NOT_FOUND") return res.status(404).json({ error: err.message });
     if (err.code === "IPFS_FETCH_FAILED") return res.status(502).json({ error: err.message });
-    console.error("Content fetch error:", err);
+    console.error("Download fetch error:", err);
     return res.status(500).json({ error: "Failed to fetch file content" });
   }
 });

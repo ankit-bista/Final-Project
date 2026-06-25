@@ -13,7 +13,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-export function WalletConnector() {
+type WalletConnectorProps = {
+  redirectTo?: string
+  variant?: 'default' | 'outline' | 'hero'
+}
+
+export function WalletConnector({ redirectTo = '/drive', variant = 'default' }: WalletConnectorProps) {
   const router = useRouter()
   const { isConnected, account, balance, connectWallet, disconnectWallet, isConnecting, error } = useWeb3()
 
@@ -22,18 +27,28 @@ export function WalletConnector() {
     return `${addr.slice(0, 6)}...${addr.slice(-4)}`
   }
 
+  const handleConnect = async () => {
+    const ok = await connectWallet()
+    if (ok && redirectTo) router.push(redirectTo)
+  }
+
   if (!isConnected) {
     return (
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col items-end gap-1">
         <Button
-          onClick={connectWallet}
+          onClick={handleConnect}
           disabled={isConnecting}
-          className="gap-2 bg-primary hover:opacity-90"
+          variant={variant === 'outline' ? 'outline' : 'default'}
+          className={
+            variant === 'hero'
+              ? 'gap-2 bg-white text-primary hover:bg-white/90'
+              : 'gap-2 bg-primary hover:opacity-90'
+          }
         >
           <Wallet className="w-4 h-4" />
           {isConnecting ? 'Connecting...' : 'Connect Wallet'}
         </Button>
-        {error && <p className="text-xs text-destructive">{error}</p>}
+        {error && <p className="text-xs text-destructive max-w-[220px] text-right">{error}</p>}
       </div>
     )
   }
@@ -57,10 +72,11 @@ export function WalletConnector() {
           <p className="text-sm font-semibold">Balance: {balance} ETH</p>
         </div>
         <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => router.push('/drive')}>Open My Drive</DropdownMenuItem>
         <DropdownMenuItem
           onClick={async () => {
             await disconnectWallet()
-            router.push('/landing')
+            router.push('/')
           }}
           className="text-destructive focus:text-destructive"
         >

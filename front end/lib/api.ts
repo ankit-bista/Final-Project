@@ -1,20 +1,23 @@
 import axios from 'axios';
 
-// Prefer same-origin (empty baseURL) so requests hit Next.js and rewrites proxy to Express.
-// Session cookies then stay on the app origin (e.g. localhost:3000) and auth works reliably.
-// Set NEXT_PUBLIC_BACKEND_URL only if the API is on another host (e.g. production).
+// Call Express directly. Backend CORS allows localhost origins with credentials.
+// Next.js rewrites are unreliable when an old dev server is cached on port 3000.
 const envBackendUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || '').trim();
-const backendUrl = /:5002\b/.test(envBackendUrl) ? '' : envBackendUrl;
+const defaultBackendUrl = 'http://127.0.0.1:5000';
 
-if (envBackendUrl && /:5002\b/.test(envBackendUrl)) {
-  console.warn(
-    'Ignoring NEXT_PUBLIC_BACKEND_URL on port 5002 (IPFS). ' +
-      'Using same-origin API calls so Next rewrites can reach backend on port 5000.'
-  );
+function resolveBackendUrl(): string {
+  if (!envBackendUrl) return defaultBackendUrl;
+  if (/:5002\b/.test(envBackendUrl)) {
+    console.warn(
+      'Ignoring NEXT_PUBLIC_BACKEND_URL on port 5002 (IPFS). Using Express on port 5000.'
+    );
+    return defaultBackendUrl;
+  }
+  return envBackendUrl;
 }
 
 const api = axios.create({
-  baseURL: backendUrl,
+  baseURL: resolveBackendUrl(),
   withCredentials: true,
 });
 

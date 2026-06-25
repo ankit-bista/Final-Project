@@ -111,11 +111,22 @@ export async function uploadAndRecordFile(userId, file, customFilename, descript
 export async function deleteFileForUser(userId, fileId) {
   const walletAddress = await getWalletAddress(userId);
   const file = await getFileById(fileId);
-  if (!file) return;
+  if (!file) {
+    const err = new Error("File not found");
+    err.code = "NOT_FOUND";
+    throw err;
+  }
 
   const driveId = file?.drive_id != null ? Number(file.drive_id) : null;
   if (driveId != null) {
-    await requireDriveRole(driveId, userId, ["admin"]);
+    const { role } = await requireDriveRole(driveId, userId, ["admin", "editor", "viewer"]);
+    const uploaderId = Number(file.uploaded_by || file.user_id);
+    const isUploader = uploaderId === Number(userId);
+    if (!(role === "admin" || (role === "editor" && isUploader))) {
+      const err = new Error("Access denied");
+      err.code = "ACCESS_DENIED";
+      throw err;
+    }
   } else if (Number(file.user_id) !== Number(userId)) {
     const err = new Error("Access denied");
     err.code = "ACCESS_DENIED";

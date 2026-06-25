@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 
 import api from '@/lib/api'
 import { cacheFileKeyByCid, encryptFileInBrowser, getMyEncryptionPublicKey } from '@/lib/file-crypto'
+import { getApiErrorMessage } from '@/lib/error-message'
 import { useWeb3 } from '@/context/web3-context'
 
 interface UploadZoneProps {
@@ -164,14 +165,9 @@ export function UploadZone({
       setFilename('');
       setDescription('');
       onUploadComplete?.();
-    } catch (err: any) {
-      console.error('Upload failed', err);
-      const msg =
-        err?.response?.data?.error ||
-        err?.response?.data ||
-        err?.message ||
-        'Upload failed';
-      alert(msg);
+    } catch (err: unknown) {
+      console.error('Upload failed', err)
+      alert(getApiErrorMessage(err, 'Upload failed'))
     } finally {
       setIsUploading(false);
     }

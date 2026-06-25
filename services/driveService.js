@@ -1,6 +1,7 @@
 import {
   createDrive,
   createDriveActivityLog,
+  deleteDriveCascade,
   assignLegacyFilesToDrive,
   findPersonalDriveByOwner,
   getDriveById,
@@ -14,6 +15,7 @@ import {
   updateDriveQuotaLimit,
   upsertDriveMember,
 } from "./models/index.js";
+import { transferQuota } from "./quotaService.js";
 
 export async function ensureDefaultDriveForUser(userId) {
   const existing = await findPersonalDriveByOwner(userId);
@@ -107,7 +109,13 @@ export async function createCollaborativeDrive({ ownerId, name, quotaLimitBytes 
   return drive;
 }
 
-export async function inviteDriveMember({ driveId, actorUserId, targetUserId, role }) {
+export async function inviteDriveMember({
+  driveId,
+  actorUserId,
+  targetUserId,
+  role,
+  quotaTransferBytes = 0,
+}) {
   await requireDriveRole(driveId, actorUserId, ["admin"]);
   const member = await upsertDriveMember({
     driveId,
@@ -123,6 +131,10 @@ export async function inviteDriveMember({ driveId, actorUserId, targetUserId, ro
     targetId: targetUserId,
     metadata: { role: member.role },
   });
+  const transferBytes = Math.max(0, Number(quotaTransferBytes || 0));
+  if (transferBytes > 0) {
+    await transferQuota(actorUserId, targetUserId, transferBytes);
+  }
   return member;
 }
 
@@ -157,4 +169,14 @@ export async function updateDriveQuotaByAdmin({ driveId, actorUserId, quotaLimit
 export async function getDriveMembersByUser(driveId, userId) {
   await requireDriveRole(driveId, userId, ["admin", "editor", "viewer"]);
   return listDriveMembers(driveId);
+}
+
+export async function deleteDriveByAdmin({ driveId, actorUserId }) {
+  const { drive } = await requireDriveRole(driveId, actorUserId, ["admin"]);
+  if (drive.personal) {
+    const err = new Error("Personal drives cannot be deleted");
+    err.code = "INVALID";
+    throw err;
+  }
+  return deleteDriveCascade(driveId);
 }

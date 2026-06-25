@@ -5,7 +5,6 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { loadEnvConfig } = require("@next/env");
 
-// Load repo-root `.env` so `BACKEND_URL` works when you run `npm run dev` from `front end/`
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 loadEnvConfig(repoRoot);
@@ -19,8 +18,6 @@ if (process.env.BACKEND_URL && /:5002\b/.test(process.env.BACKEND_URL)) {
   );
 }
 
-// BACKEND_URL must be the Node/Express API (default port 5000). Do NOT point this at IPFS (5002).
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
@@ -29,7 +26,9 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  // Proxy backend API calls to Express server
+  turbopack: {
+    root: process.cwd(),
+  },
   async rewrites() {
     return [
       { source: '/auth/:path*', destination: `${backendUrl}/auth/:path*` },

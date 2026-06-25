@@ -19,6 +19,8 @@ export interface FileItem {
   txHash?: string
   isOnBlockchain?: boolean
   verified?: boolean
+  uploadedBy?: number | string
+  uploadedByName?: string
 }
 
 export interface User {

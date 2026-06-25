@@ -518,6 +518,34 @@ export async function incrementDriveQuotaUsed(driveId, deltaBytes) {
   );
 }
 
+export async function deleteDriveCascade(driveId) {
+  const db = await getDb();
+  const numericDriveId = Number(driveId);
+  const files = await db
+    .collection("files")
+    .find({ drive_id: numericDriveId }, { projection: { id: 1 } })
+    .toArray();
+  const fileIds = files.map((f) => Number(f.id));
+
+  if (fileIds.length > 0) {
+    await Promise.all([
+      db.collection("file_shares").deleteMany({ file_id: { $in: fileIds } }),
+      db.collection("file_comments").deleteMany({ file_id: { $in: fileIds } }),
+      db.collection("file_links").deleteMany({ file_id: { $in: fileIds } }),
+    ]);
+  }
+
+  await Promise.all([
+    db.collection("files").deleteMany({ drive_id: numericDriveId }),
+    db.collection("folders").deleteMany({ drive_id: numericDriveId }),
+    db.collection("drive_members").deleteMany({ drive_id: numericDriveId }),
+    db.collection("drive_activity_logs").deleteMany({ drive_id: numericDriveId }),
+  ]);
+
+  const res = await db.collection("drives").deleteOne({ id: numericDriveId });
+  return res.deletedCount > 0;
+}
+
 // ─────────────────────────────────────────
 // DRIVE MEMBERS
 // ─────────────────────────────────────────
