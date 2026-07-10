@@ -5,10 +5,7 @@ import { usePathname } from 'next/navigation'
 import {
   Folder,
   Share2,
-  Settings,
   Users,
-  BarChart3,
-  Zap,
   Layers,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -38,17 +35,9 @@ const NAV_ITEMS = [
 
 const USER_ITEMS = [
   {
-    label: 'Users',
+    label: 'Admin Console',
     href: '/users',
     icon: Users,
-  },
-]
-
-const ADMIN_ITEMS = [
-  {
-    label: 'Admin Dashboard',
-    href: '/admin',
-    icon: BarChart3,
   },
 ]
 
@@ -118,59 +107,7 @@ export function Sidebar({ isAdmin = false }: SidebarProps) {
           })}
         </div>
 
-        {/* Admin Section */}
-        {isAdmin && (
-          <div className="pt-4 mt-4 border-t border-sidebar-border">
-            {ADMIN_ITEMS.map((item) => {
-              const Icon = item.icon
-              const isActive = pathname === item.href
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    'flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors',
-                    isActive
-                      ? 'bg-destructive text-destructive-foreground'
-                      : 'text-sidebar-foreground hover:bg-destructive/15'
-                  )}
-                >
-                  <Icon className="w-5 h-5" />
-                  <span className="text-sm font-medium">{item.label}</span>
-                </Link>
-              )
-            })}
-          </div>
-        )}
       </nav>
-
-      {/* Footer - Settings & Blockchain */}
-      <div className="p-4 border-t border-sidebar-border space-y-1">
-        <Link
-          href="/blockchain"
-          className={cn(
-            'flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors',
-            pathname === '/blockchain'
-              ? 'bg-accent text-accent-foreground'
-              : 'text-sidebar-foreground hover:bg-accent/20'
-          )}
-        >
-          <Zap className="w-5 h-5" />
-          <span className="text-sm font-medium">Blockchain</span>
-        </Link>
-        <Link
-          href="/settings"
-          className={cn(
-            'flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors',
-            pathname === '/settings'
-              ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-              : 'text-sidebar-foreground hover:bg-sidebar-accent'
-          )}
-        >
-          <Settings className="w-5 h-5" />
-          <span className="text-sm font-medium">Settings</span>
-        </Link>
-      </div>
     </aside>
   )
 }

@@ -66,6 +66,11 @@ export async function listFilesByDrive(driveId, folderId = null) {
   return db.collection("files").find(query).sort({ id: -1 }).toArray();
 }
 
+export async function listAllFilesByDrive(driveId) {
+  const db = await getDb();
+  return db.collection("files").find({ drive_id: Number(driveId) }).sort({ id: -1 }).toArray();
+}
+
 export async function assignLegacyFilesToDrive(ownerId, driveId) {
   const db = await getDb();
   await db.collection("files").updateMany(
@@ -492,6 +497,55 @@ export async function listDrivesForUser(userId) {
       my_role: roleMap.get(Number(d.id)) || (Number(d.owner_id) === Number(userId) ? "admin" : "viewer"),
     }))
     .sort((a, b) => Number(Boolean(b.personal)) - Number(Boolean(a.personal)));
+}
+
+export async function listAllCollaborativeDrivesForAdmin() {
+  const db = await getDb();
+  const drives = await db.collection("drives").find({ personal: { $ne: true } }).sort({ updated_at: -1 }).toArray();
+  if (!drives.length) return [];
+
+  const driveIds = drives.map((d) => Number(d.id));
+  const ownerIds = [...new Set(drives.map((d) => Number(d.owner_id)))];
+  const [owners, memberCounts, fileStats] = await Promise.all([
+    db.collection("users").find({ id: { $in: ownerIds } }).toArray(),
+    db
+      .collection("drive_members")
+      .aggregate([
+        { $match: { drive_id: { $in: driveIds } } },
+        { $group: { _id: "$drive_id", count: { $sum: 1 } } },
+      ])
+      .toArray(),
+    db
+      .collection("files")
+      .aggregate([
+        { $match: { drive_id: { $in: driveIds } } },
+        {
+          $group: {
+            _id: "$drive_id",
+            count: { $sum: 1 },
+            sizeBytes: { $sum: { $ifNull: ["$size_bytes", 0] } },
+          },
+        },
+      ])
+      .toArray(),
+  ]);
+
+  const ownerMap = new Map(owners.map((u) => [Number(u.id), u]));
+  const memberCountMap = new Map(memberCounts.map((row) => [Number(row._id), Number(row.count || 0)]));
+  const fileStatsMap = new Map(fileStats.map((row) => [Number(row._id), row]));
+
+  return drives.map((drive) => {
+    const owner = ownerMap.get(Number(drive.owner_id));
+    const stats = fileStatsMap.get(Number(drive.id));
+    return {
+      ...drive,
+      owner_username: owner?.username || null,
+      owner_wallet_address: owner?.wallet_address || null,
+      member_count: memberCountMap.get(Number(drive.id)) || 0,
+      file_count: Number(stats?.count || 0),
+      total_file_bytes: Number(stats?.sizeBytes || 0),
+    };
+  });
 }
 
 export async function updateDriveQuotaLimit(driveId, quotaLimitBytes) {

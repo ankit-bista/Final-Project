@@ -2,7 +2,20 @@ import express from "express";
 import { blockchainService } from "../services/blockchain.js";
 import { assignRoleAndQuota, ensureUserRoleSchema, isAdmin } from "../services/userRoleService.js";
 import { computeUsedBytes } from "../services/quotaService.js";
-import { deleteUserById, listUsersForAdmin } from "../services/models/index.js";
+import {
+  createDrive,
+  deleteDriveCascade,
+  deleteUserById,
+  getDriveById,
+  findUserByUsernameOrWallet,
+  listAllCollaborativeDrivesForAdmin,
+  listAllFilesByDrive,
+  listDriveMembers,
+  listUsersForAdmin,
+  upsertDriveMember,
+  removeDriveMember,
+  updateDriveQuotaLimit,
+} from "../services/models/index.js";
 
 const router = express.Router();
 ensureUserRoleSchema().catch(() => {});
@@ -93,6 +106,133 @@ router.post("/api/admin/users/:id/access", requireAdmin, async (req, res) => {
   }
 });
 
+router.get("/api/admin/drives", requireAdmin, async (req, res) => {
+  try {
+    const drives = await listAllCollaborativeDrivesForAdmin();
+    res.json(drives);
+  } catch (err) {
+    console.error("Error in /api/admin/drives:", err);
+    res.status(500).json({ error: "Failed to fetch drives" });
+  }
+});
+
+router.post("/api/admin/drives", requireAdmin, async (req, res) => {
+  try {
+    const name = String(req.body?.name || "").trim();
+    if (!name) return res.status(400).json({ error: "Drive name required" });
+
+    const ownerId = req.body?.ownerId ? Number(req.body.ownerId) : Number(req.session.userId);
+    if (!Number.isFinite(ownerId)) return res.status(400).json({ error: "Invalid owner ID" });
+
+    const drive = await createDrive({
+      name,
+      ownerId,
+      personal: false,
+      quotaLimitBytes: Number(req.body?.quotaLimitBytes || 0),
+    });
+    await upsertDriveMember({ driveId: drive.id, userId: ownerId, role: "admin", invitedBy: req.session.userId });
+    res.json(drive);
+  } catch (err) {
+    console.error("Admin create drive failed:", err);
+    res.status(500).json({ error: "Failed to create drive" });
+  }
+});
+
+router.get("/api/admin/drives/:id/files", requireAdmin, async (req, res) => {
+  try {
+    const driveId = Number(req.params.id);
+    if (!Number.isFinite(driveId)) return res.status(400).json({ error: "Invalid drive ID" });
+    const files = await listAllFilesByDrive(driveId);
+    res.json(files);
+  } catch (err) {
+    console.error("Admin list drive files failed:", err);
+    res.status(500).json({ error: "Failed to fetch drive files" });
+  }
+});
+
+router.get("/api/admin/drives/:id/members", requireAdmin, async (req, res) => {
+  try {
+    const driveId = Number(req.params.id);
+    if (!Number.isFinite(driveId)) return res.status(400).json({ error: "Invalid drive ID" });
+    const members = await listDriveMembers(driveId);
+    res.json(members);
+  } catch (err) {
+    console.error("Admin list drive members failed:", err);
+    res.status(500).json({ error: "Failed to fetch drive members" });
+  }
+});
+
+router.post("/api/admin/drives/:id/members", requireAdmin, async (req, res) => {
+  try {
+    const driveId = Number(req.params.id);
+    if (!Number.isFinite(driveId)) return res.status(400).json({ error: "Invalid drive ID" });
+
+    const identifier = String(req.body?.identifier || "").trim();
+    if (!identifier) return res.status(400).json({ error: "User identifier required" });
+
+    const user = await findUserByUsernameOrWallet(identifier);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const member = await upsertDriveMember({
+      driveId,
+      userId: user.id,
+      role: req.body?.role || "viewer",
+      invitedBy: req.session.userId,
+    });
+    res.json({ success: true, member });
+  } catch (err) {
+    console.error("Admin add drive member failed:", err);
+    res.status(500).json({ error: "Failed to add drive member" });
+  }
+});
+
+router.delete("/api/admin/drives/:id/members/:userId", requireAdmin, async (req, res) => {
+  try {
+    const driveId = Number(req.params.id);
+    const userId = Number(req.params.userId);
+    if (!Number.isFinite(driveId) || !Number.isFinite(userId)) {
+      return res.status(400).json({ error: "Invalid drive or user ID" });
+    }
+
+    const removed = await removeDriveMember(driveId, userId);
+    if (!removed) return res.status(404).json({ error: "Member not found" });
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Admin remove drive member failed:", err);
+    res.status(500).json({ error: "Failed to remove drive member" });
+  }
+});
+
+router.post("/api/admin/drives/:id/quota", requireAdmin, async (req, res) => {
+  try {
+    const driveId = Number(req.params.id);
+    if (!Number.isFinite(driveId)) return res.status(400).json({ error: "Invalid drive ID" });
+    await updateDriveQuotaLimit(driveId, Number(req.body?.quotaLimitBytes || 0));
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Admin update drive quota failed:", err);
+    res.status(500).json({ error: "Failed to update drive quota" });
+  }
+});
+
+router.delete("/api/admin/drives/:id", requireAdmin, async (req, res) => {
+  try {
+    const driveId = Number(req.params.id);
+    if (!Number.isFinite(driveId)) return res.status(400).json({ error: "Invalid drive ID" });
+
+    const drive = await getDriveById(driveId);
+    if (!drive) return res.status(404).json({ error: "Drive not found" });
+    if (drive.personal) return res.status(400).json({ error: "Personal drives cannot be deleted here" });
+
+    const deleted = await deleteDriveCascade(driveId);
+    if (!deleted) return res.status(404).json({ error: "Drive not found" });
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Admin delete drive failed:", err);
+    res.status(500).json({ error: "Failed to delete drive" });
+  }
+});
+
 // Delete a user (Admin only)
 router.delete("/api/admin/users/:id", requireAdmin, async (req, res) => {
   try {
@@ -107,4 +247,3 @@ router.delete("/api/admin/users/:id", requireAdmin, async (req, res) => {
 });
 
 export default router;
-
