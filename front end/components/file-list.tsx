@@ -63,7 +63,6 @@ export function FileList({
             <th className="px-4 py-3 text-left text-sm font-medium">Name</th>
             <th className="px-4 py-3 text-left text-sm font-medium">Size</th>
             <th className="px-4 py-3 text-left text-sm font-medium">Blockchain</th>
-            <th className="px-4 py-3 text-left text-sm font-medium">Modified</th>
             <th className="px-4 py-3 text-right text-sm font-medium">Actions</th>
           </tr>
         </thead>
@@ -154,9 +153,6 @@ export function FileList({
                     </Button>
                   )}
                 </div>
-              </td>
-              <td className="px-4 py-3 text-sm text-muted-foreground">
-                {formatDate(file.modified)}
               </td>
               <td className="px-4 py-3 text-right">
                 <div className="flex items-center justify-end gap-1">

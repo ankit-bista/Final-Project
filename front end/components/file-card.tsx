@@ -130,7 +130,6 @@ export function FileCard({
 
       {/* Meta */}
       <div className="space-y-1 text-xs text-muted-foreground mb-3">
-        <p>{file.modified ? new Date(file.modified).toLocaleDateString() : ''}</p>
         {!isFolder && file.size && <p>{typeof file.size === 'number' ? formatBytes(file.size) : file.size}</p>}
         {!isFolder && file.uploadedByName && <p>Uploaded by: {file.uploadedByName}</p>}
       </div>

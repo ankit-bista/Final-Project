@@ -7,7 +7,9 @@ import { FileGrid } from '@/components/file-grid'
 import { FileList } from '@/components/file-list'
 import { ViewToggle } from '@/components/view-toggle'
 import { UploadZone } from '@/components/upload-zone'
-import { NewFolderDialog, DeleteDialog, ShareDialog } from '@/components/file-dialogs'
+import { NewFolderDialog } from '@/components/dialogs/new-folder-dialog'
+import { DeleteDialog } from '@/components/dialogs/delete-dialog'
+import { ShareDialog } from '@/components/dialogs/share-dialog'
 import { FileCommentsPanel } from '@/components/file-comments-panel'
 import { Button } from '@/components/ui/button'
 import { Link2, MessageSquare, Plus, Upload } from 'lucide-react'
@@ -183,9 +185,36 @@ export default function DashboardPage() {
       a.download = outName
       a.click()
       URL.revokeObjectURL(url)
-    } catch (err) {
+    } catch (err: any) {
       console.error('Download failed', err);
-      alert('Failed to get download link');
+      
+      let errorMsg = 'Failed to get download link';
+      
+      // Parse blob error if responseType was blob
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const json = JSON.parse(text);
+          if (json.error) {
+            errorMsg = json.error;
+          }
+        } catch (e) {
+          // ignore
+        }
+      } else if (err.response?.data?.error) {
+        errorMsg = err.response.data.error;
+      } else if (err.message) {
+        errorMsg = err.message;
+      }
+      
+      const status = err?.response?.status;
+      if (status === 502 || status === 504 || err.code === 'ECONNABORTED' || errorMsg.includes('IPFS')) {
+        alert("IPFS node timeout or unavailable. The file could not be retrieved.");
+      } else if (errorMsg.includes('decrypt') || errorMsg.includes('MetaMask') || errorMsg.includes('Connect wallet')) {
+        alert("Failed to decrypt file. Please make sure your wallet is connected and you have access.");
+      } else {
+        alert(errorMsg);
+      }
     }
   }
 
@@ -237,12 +266,17 @@ export default function DashboardPage() {
 
     setShareProgressLabel('Preparing file keys...')
     setShareProgressPercent(25)
+    const isDriveShare = shareData.fileId === 'drive'
+    const targetFiles = isDriveShare
+      ? fileRows
+      : files.filter((f) => String(f.id) === String(shareData.fileId))
+
     const keyShares: Record<string, any> = {}
-    const encryptableFiles = fileRows.filter((f) => Boolean(f.encryption?.ownerEncryptedKey))
+    const encryptableFiles = targetFiles.filter((f) => Boolean(f.encryption?.ownerEncryptedKey))
     const total = Math.max(1, encryptableFiles.length)
     let done = 0
     let skipped = 0
-    for (const f of fileRows) {
+    for (const f of targetFiles) {
       if (!f.encryption?.ownerEncryptedKey) continue
       let rawKey = getCachedFileKeyByCid(f.cid)
       if (!rawKey) {
@@ -276,12 +310,22 @@ export default function DashboardPage() {
 
     setShareProgressLabel('Sending secure share...')
     setShareProgressPercent(90)
-    await api.post('/drive/share', {
-      username,
-      role,
-      keyShares,
-      expiresInHours: options?.expiresInHours ?? null,
-    })
+    
+    if (isDriveShare) {
+      await api.post('/drive/share', {
+        username,
+        role,
+        keyShares,
+        expiresInHours: options?.expiresInHours ?? null,
+      })
+    } else {
+      await api.post(`/share/${shareData.fileId}`, {
+        username,
+        role,
+        encryptedKey: keyShares[String(shareData.fileId)] || null,
+        expiresInHours: options?.expiresInHours ?? null,
+      })
+    }
     if (options?.skipUncached && skipped > 0) {
       alert(`Shared with ${Object.keys(keyShares).length} file keys. Skipped ${skipped} uncached file(s).`)
     }
