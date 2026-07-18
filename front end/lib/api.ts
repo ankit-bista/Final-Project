@@ -6,14 +6,23 @@ const envBackendUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || '').trim();
 const defaultBackendUrl = 'http://127.0.0.1:5000';
 
 function resolveBackendUrl(): string {
-  if (!envBackendUrl) return defaultBackendUrl;
-  if (/:5002\b/.test(envBackendUrl)) {
-    console.warn(
-      'Ignoring NEXT_PUBLIC_BACKEND_URL on port 5002 (IPFS). Using Express on port 5000.'
-    );
-    return defaultBackendUrl;
+  if (envBackendUrl) {
+    if (/:5002\b/.test(envBackendUrl)) {
+      console.warn(
+        'Ignoring NEXT_PUBLIC_BACKEND_URL on port 5002 (IPFS). Using Express on port 5000.'
+      );
+      return defaultBackendUrl;
+    }
+    return envBackendUrl;
   }
-  return envBackendUrl;
+
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    return `${protocol}//${hostname}:5000`;
+  }
+
+  return defaultBackendUrl;
 }
 
 const api = axios.create({

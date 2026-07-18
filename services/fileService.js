@@ -1,6 +1,7 @@
 import { generateCustomHash } from "../utils/customHash.js";
 import { uploadToIPFS } from "./ipfsService.js";
 import { blockchainService } from "./blockchain.js";
+import { getDb } from "./database.js";
 import {
   findUserById,
   createFile,
@@ -196,4 +197,41 @@ export async function anchorFileForUser(userId, fileId) {
   }
 
   return { txHash };
+}
+
+export async function deleteFolderForUser(userId, folderId) {
+  const db = await getDb();
+  const numericFolderId = Number(folderId);
+  const folder = await db.collection("folders").findOne({ id: numericFolderId });
+  if (!folder) {
+    const err = new Error("Folder not found");
+    err.code = "NOT_FOUND";
+    throw err;
+  }
+
+  // Check drive membership/permissions of the parent drive
+  const driveId = Number(folder.drive_id);
+  const { role } = await requireDriveRole(driveId, userId, ["admin", "editor"]);
+
+  // Recursive delete helper
+  async function recursiveDelete(fid) {
+    // 1. Get and delete all files in this folder
+    const files = await db.collection("files").find({ folder_id: fid }).toArray();
+    for (const file of files) {
+      await deleteFileForUser(userId, file.id);
+    }
+
+    // 2. Find and delete all subfolders recursively
+    const subfolders = await db.collection("folders").find({ parent_folder_id: fid }).toArray();
+    for (const sub of subfolders) {
+      await recursiveDelete(sub.id);
+    }
+
+    // 3. Delete the folder itself
+    await db.collection("folders").deleteOne({ id: fid });
+  }
+
+  await recursiveDelete(numericFolderId);
+  await recalculateDriveUsage(driveId);
+  return true;
 }

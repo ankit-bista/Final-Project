@@ -1,7 +1,8 @@
 import express from "express";
 import multer from "multer";
-import { uploadAndRecordFile, deleteFileForUser, getUserFiles, anchorFileForUser } from "../services/fileService.js";
+import { uploadAndRecordFile, deleteFileForUser, getUserFiles, anchorFileForUser, deleteFolderForUser } from "../services/fileService.js";
 import { shareDriveWithUser, shareFileWithUser, getSharedWithUser, createExpiringLinkForFile, resolveLinkToken } from "../services/collaborationService.js";
+import { getDb } from "../services/database.js";
 import { getUserRoleAndQuota } from "../services/userRoleService.js";
 import { assertCanUpload, getQuotaSnapshot } from "../services/quotaService.js";
 import { addCommentToFile, listCommentsForFile } from "../services/commentService.js";
@@ -28,6 +29,7 @@ import {
   removeDriveMemberByAdmin,
   requireDriveRole,
   updateDriveQuotaByAdmin,
+  renameDriveForUser,
 } from "../services/driveService.js";
 
 const router = express.Router();
@@ -77,6 +79,8 @@ router.get("/me", requireAuth, async (req, res) => {
     res.json({
       id: user.id,
       username: user.username,
+      fullName: user.full_name || "",
+      walletAddress: user.wallet_address,
       role: roleInfo?.role || "commenter",
       quotaBytes: quota?.quotaBytes || 0,
       usedBytes: quota?.usedBytes || 0,
@@ -472,7 +476,7 @@ router.post("/share/:id", requireAuth, async (req, res) => {
   try {
     const ownerId = req.authUserId;
     const fileId = req.params.id;
-    const { username, role, encryptedKey } = req.body;
+    const { username, role, encryptedKey, expiresInHours } = req.body;
 
     if (!fileId || isNaN(fileId)) {
       return res.status(400).send("Invalid file ID");
@@ -486,8 +490,8 @@ router.post("/share/:id", requireAuth, async (req, res) => {
       return res.status(400).send('Role must be "viewer" or "editor"');
     }
 
-    await shareFileWithUser(ownerId, fileId, username.trim(), role, encryptedKey || null);
-    res.sendStatus(200);
+    const result = await shareFileWithUser(ownerId, fileId, username.trim(), role, encryptedKey || null, expiresInHours || null);
+    res.json({ success: true, expiresAt: result?.expiresAt || null });
   } catch (err) {
     if (err.code === "NOT_FOUND") {
       return res.status(404).send(err.message);
@@ -510,7 +514,7 @@ router.post("/share/:id", requireAuth, async (req, res) => {
 router.post("/drive/share", requireAuth, async (req, res) => {
   try {
     const ownerId = req.authUserId;
-    const { username, role, keyShares } = req.body;
+    const { username, role, keyShares, expiresInHours } = req.body;
 
     if (!username || !username.trim()) {
       return res.status(400).send("Username required");
@@ -520,7 +524,7 @@ router.post("/drive/share", requireAuth, async (req, res) => {
       return res.status(400).send('Role must be "viewer" or "editor"');
     }
 
-    await shareDriveWithUser(ownerId, username.trim(), role, keyShares || {});
+    await shareDriveWithUser(ownerId, username.trim(), role, keyShares || {}, expiresInHours || null);
     res.sendStatus(200);
   } catch (err) {
     if (err.code === "USER_NOT_FOUND") {
@@ -607,6 +611,106 @@ router.get("/l/:token", async (req, res) => {
   } catch (err) {
     console.error("Link resolution error:", err);
     res.status(500).send("Error resolving link");
+  }
+});
+
+// Admin/Settings Dashboard routes
+router.get("/api/user/items", requireAuth, async (req, res) => {
+  try {
+    const files = await getUserFiles(req.authUserId);
+    const db = await getDb();
+    const folders = await db.collection("folders")
+      .find({ created_by: Number(req.authUserId) })
+      .sort({ created_at: -1 })
+      .toArray();
+
+    const items = [
+      ...folders.map((f) => ({
+        id: f.id,
+        name: f.name,
+        type: "folder",
+        size: null,
+        dateAdded: f.created_at,
+      })),
+      ...files.map((f) => ({
+        id: f.id,
+        name: f.file_name || f.filename,
+        type: "file",
+        size: f.size_bytes,
+        dateAdded: f.created_at,
+      })),
+    ];
+
+    items.sort((a, b) => new Date(b.dateAdded).getTime() - new Date(a.dateAdded).getTime());
+    return res.json(items);
+  } catch (err) {
+    console.error("Failed to load user items:", err);
+    return res.status(500).json({ error: "Failed to load files and folders" });
+  }
+});
+
+router.delete("/api/files/:id", requireAuth, async (req, res) => {
+  try {
+    const fileId = Number(req.params.id);
+    await deleteFileForUser(req.authUserId, fileId);
+    return res.json({ success: true });
+  } catch (err) {
+    const status = err?.code === "NOT_FOUND" ? 404 : err?.code === "ACCESS_DENIED" ? 403 : 500;
+    return res.status(status).json({ error: err?.message || "Failed to delete file" });
+  }
+});
+
+router.delete("/api/folders/:id", requireAuth, async (req, res) => {
+  try {
+    const folderId = Number(req.params.id);
+    await deleteFolderForUser(req.authUserId, folderId);
+    return res.json({ success: true });
+  } catch (err) {
+    const status = err?.code === "NOT_FOUND" ? 404 : err?.code === "ACCESS_DENIED" ? 403 : 500;
+    return res.status(status).json({ error: err?.message || "Failed to delete folder" });
+  }
+});
+
+router.patch("/api/drives/:id", requireAuth, async (req, res) => {
+  try {
+    const driveId = Number(req.params.id);
+    const { name } = req.body || {};
+    if (!name || typeof name !== "string" || !name.trim()) {
+      return res.status(400).json({ error: "Drive name is required" });
+    }
+
+    await renameDriveForUser({
+      driveId,
+      actorUserId: req.authUserId,
+      name: name.trim(),
+    });
+
+    return res.json({ success: true });
+  } catch (err) {
+    const status = err?.code === "NOT_FOUND" ? 404 : err?.code === "ACCESS_DENIED" ? 403 : 500;
+    return res.status(status).json({ error: err?.message || "Failed to rename drive" });
+  }
+});
+
+router.delete("/api/drives/:id", requireAuth, async (req, res) => {
+  try {
+    const driveId = Number(req.params.id);
+    const ok = await deleteDriveByAdmin({
+      driveId,
+      actorUserId: req.authUserId,
+    });
+    if (!ok) return res.status(404).json({ error: "Drive not found" });
+    return res.json({ success: true });
+  } catch (err) {
+    const status =
+      err?.code === "NOT_FOUND"
+        ? 404
+        : err?.code === "ACCESS_DENIED"
+          ? 403
+          : err?.code === "INVALID"
+            ? 400
+            : 500;
+    return res.status(status).json({ error: err?.message || "Failed to delete drive" });
   }
 });
 

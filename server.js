@@ -13,6 +13,8 @@ import sharingRoutes from "./routes/sharing.js";
 import { ensureUserRoleSchema } from "./services/userRoleService.js";
 import { ensureCommentsSchema } from "./services/commentService.js";
 import { ensureDbIndexes, pingDb } from "./services/database.js";
+import { getExpiredSharedFiles } from "./services/models/index.js";
+import { deleteFileForUser } from "./services/fileService.js";
 
 const app = express();
 ensureUserRoleSchema().catch((err) => console.warn("Role schema init warning:", err?.message || err));
@@ -77,6 +79,36 @@ const PORT = process.env.PORT || 5000;
 const ipfsApi = process.env.IPFS_API_URL || "http://127.0.0.1:5002/api/v0";
 const ipfsGw = process.env.IPFS_GATEWAY_URL || "http://127.0.0.1:5002";
 
+// ──────────────────────────────────────────────────────────────────
+// Timed-share auto-delete background job
+// Runs every 60 seconds. Finds file_shares whose expires_at has
+// passed and permanently deletes the file itself via deleteFileForUser.
+// ──────────────────────────────────────────────────────────────────
+async function runShareExpiryCleanup() {
+  try {
+    const expired = await getExpiredSharedFiles();
+    if (!expired.length) return;
+    console.log(`[share-expiry] Found ${expired.length} expired share(s) — deleting files...`);
+    for (const share of expired) {
+      try {
+        await deleteFileForUser(share.owner_id, share.file_id);
+        console.log(`[share-expiry] Deleted file ${share.file_id} (share ${share.id} owned by user ${share.owner_id})`);
+      } catch (err) {
+        // File may already be deleted; swallow NOT_FOUND, log others
+        if (err?.code !== "NOT_FOUND") {
+          console.error(`[share-expiry] Failed to delete file ${share.file_id}:`, err?.message || err);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[share-expiry] Cleanup job error:", err?.message || err);
+  }
+}
+
+// Run immediately on startup, then every 60 seconds
+setTimeout(runShareExpiryCleanup, 5000);
+setInterval(runShareExpiryCleanup, 60 * 1000);
+
 app.listen(PORT, () => {
   console.log("");
   console.log("=== Blockchain Drive backend (Node / Express) ===");
@@ -89,4 +121,5 @@ app.listen(PORT, () => {
   console.log("");
   console.log(`Node environment: ${process.env.NODE_ENV || "development"}`);
   console.log(`Blockchain mode: ${process.env.USE_REAL_CONTRACTS === "true" ? "real" : "mock"}`);
+  console.log(`Share expiry cleanup: every 60 seconds`);
 });

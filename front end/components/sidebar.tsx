@@ -36,7 +36,7 @@ const NAV_ITEMS = [
 const USER_ITEMS = [
   {
     label: 'Admin Console',
-    href: '/users',
+    href: '/settings',
     icon: Users,
   },
 ]

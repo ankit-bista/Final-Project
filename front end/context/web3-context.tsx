@@ -132,7 +132,10 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
         if (userRes.data?.id && hasMetaMask()) {
           const ethereum = (window as any).ethereum
           const accounts = await ethereum.request({ method: 'eth_accounts' })
-          if (accounts.length > 0) {
+          if (
+            accounts.length > 0 &&
+            accounts[0]?.toLowerCase() === userRes.data.walletAddress?.toLowerCase()
+          ) {
             setAccount(accounts[0])
             setIsConnected(true)
             setUsername(userRes.data.username || null)

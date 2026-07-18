@@ -222,7 +222,7 @@ export default function DashboardPage() {
   const handleConfirmShare = async (
     username: string,
     role: 'viewer' | 'editor',
-    options?: { skipUncached?: boolean }
+    options?: { skipUncached?: boolean; expiresInHours?: number | null }
   ) => {
     if (!account) throw new Error('Connect wallet first')
     setShareProgressLabel('Resolving recipient...')
@@ -276,7 +276,12 @@ export default function DashboardPage() {
 
     setShareProgressLabel('Sending secure share...')
     setShareProgressPercent(90)
-    await api.post('/drive/share', { username, role, keyShares })
+    await api.post('/drive/share', {
+      username,
+      role,
+      keyShares,
+      expiresInHours: options?.expiresInHours ?? null,
+    })
     if (options?.skipUncached && skipped > 0) {
       alert(`Shared with ${Object.keys(keyShares).length} file keys. Skipped ${skipped} uncached file(s).`)
     }

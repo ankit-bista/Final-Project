@@ -1,6 +1,7 @@
 import express from "express";
 import { ethers } from "ethers";
 import crypto from "crypto";
+import { getDb } from "../services/database.js";
 import { ensureUserRoleSchema } from "../services/userRoleService.js";
 import {
   createUserWithNonce,
@@ -187,6 +188,28 @@ router.post("/auth/logout", (req, res) => {
     }
     res.json({ success: true });
   });
+});
+
+router.patch("/api/user/profile", async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+  const { fullName } = req.body || {};
+  if (!fullName || typeof fullName !== "string" || !fullName.trim()) {
+    return res.status(400).json({ error: "Full Name is required" });
+  }
+
+  try {
+    const db = await getDb();
+    await db.collection("users").updateOne(
+      { id: Number(req.session.userId) },
+      { $set: { full_name: fullName.trim() } }
+    );
+    return res.json({ success: true, fullName: fullName.trim() });
+  } catch (err) {
+    console.error("Profile update error:", err);
+    return res.status(500).json({ error: "Failed to update profile" });
+  }
 });
 
 export default router;

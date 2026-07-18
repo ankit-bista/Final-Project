@@ -7,6 +7,6 @@ export function resolveRequestUserId(req) {
     return headerUserId;
   }
 
-  return sessionUserId || 1;
+  return sessionUserId || null;
 }
 

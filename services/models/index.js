@@ -239,13 +239,13 @@ export async function findShare(fileId, granteeId) {
   });
 }
 
-export async function upsertShare({ fileId, ownerId, granteeId, role, encryptedKey = null }) {
+export async function upsertShare({ fileId, ownerId, granteeId, role, encryptedKey = null, expiresAt = null }) {
   const db = await getDb();
   const existing = await findShare(fileId, granteeId);
   if (existing) {
     await db.collection("file_shares").updateOne(
       { id: existing.id },
-      { $set: { role, encrypted_key: encryptedKey ?? existing.encrypted_key ?? null } }
+      { $set: { role, encrypted_key: encryptedKey ?? existing.encrypted_key ?? null, expires_at: expiresAt ?? existing.expires_at ?? null } }
     );
     return { id: existing.id };
   }
@@ -257,6 +257,7 @@ export async function upsertShare({ fileId, ownerId, granteeId, role, encryptedK
     grantee_id: Number(granteeId),
     role,
     encrypted_key: encryptedKey,
+    expires_at: expiresAt,
     created_at: new Date(),
   });
   return { id };
@@ -333,10 +334,23 @@ export async function listSharesByOwner(ownerId) {
         recipientUsername: user.username || "Unknown",
         recipientWallet: user.wallet_address || null,
         role: s.role,
+        expiresAt: s.expires_at || null,
         createdAt: s.created_at || null,
       };
     })
     .filter(Boolean);
+}
+
+/**
+ * Find all file shares that have expired and should trigger file auto-deletion.
+ * Returns objects with { fileId, ownerId, shareId }
+ */
+export async function getExpiredSharedFiles() {
+  const db = await getDb();
+  const now = new Date();
+  return db.collection("file_shares")
+    .find({ expires_at: { $ne: null, $lte: now } })
+    .toArray();
 }
 
 // ─────────────────────────────────────────
@@ -491,10 +505,19 @@ export async function listDrivesForUser(userId) {
   const driveIds = [...new Set(memberships.map((m) => Number(m.drive_id)))];
   const drives = await db.collection("drives").find({ id: { $in: driveIds } }).toArray();
   const roleMap = new Map(memberships.map((m) => [Number(m.drive_id), m.role]));
+
+  // Aggregate file counts for each drive
+  const fileCounts = await db.collection("files").aggregate([
+    { $match: { drive_id: { $in: driveIds } } },
+    { $group: { _id: "$drive_id", count: { $sum: 1 } } }
+  ]).toArray();
+  const countMap = new Map(fileCounts.map((fc) => [fc._id, fc.count]));
+
   return drives
     .map((d) => ({
       ...d,
       my_role: roleMap.get(Number(d.id)) || (Number(d.owner_id) === Number(userId) ? "admin" : "viewer"),
+      file_count: countMap.get(Number(d.id)) || 0,
     }))
     .sort((a, b) => Number(Boolean(b.personal)) - Number(Boolean(a.personal)));
 }
@@ -553,6 +576,14 @@ export async function updateDriveQuotaLimit(driveId, quotaLimitBytes) {
   await db.collection("drives").updateOne(
     { id: Number(driveId) },
     { $set: { quota_limit_bytes: Number(quotaLimitBytes || 0), updated_at: new Date() } }
+  );
+}
+
+export async function updateDriveName(driveId, name) {
+  const db = await getDb();
+  await db.collection("drives").updateOne(
+    { id: Number(driveId) },
+    { $set: { name: String(name || "Unnamed Drive"), updated_at: new Date() } }
   );
 }
 

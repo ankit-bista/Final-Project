@@ -27,7 +27,7 @@ import {
 /**
  * Share a file with another user by username or wallet address.
  */
-export async function shareFileWithUser(ownerId, fileId, username, role, encryptedKey = null) {
+export async function shareFileWithUser(ownerId, fileId, username, role, encryptedKey = null, expiresInHours = null) {
   const normalizedRole = role === "editor" ? "editor" : "viewer";
   const enforceContractSharing = process.env.ENFORCE_CONTRACT_SHARING === "true";
   const targetKey = username.trim();
@@ -72,6 +72,12 @@ export async function shareFileWithUser(ownerId, fileId, username, role, encrypt
 
   const fileCid = file.ipfs_hash || fileId.toString();
 
+  // Compute expiry timestamp
+  const expiresAt =
+    Number.isFinite(Number(expiresInHours)) && Number(expiresInHours) > 0
+      ? new Date(Date.now() + Number(expiresInHours) * 60 * 60 * 1000)
+      : null;
+
   // Hybrid best practice: if enabled, only grant DB access when the contract call succeeds.
   if (enforceContractSharing && granteeWallet) {
     try {
@@ -89,6 +95,7 @@ export async function shareFileWithUser(ownerId, fileId, username, role, encrypt
     granteeId: Number(granteeId),
     role: normalizedRole,
     encryptedKey,
+    expiresAt,
   });
 
   // Transfer 10MB quota from sharer to grantee (quota assignment feature)
@@ -97,9 +104,6 @@ export async function shareFileWithUser(ownerId, fileId, username, role, encrypt
     await transferQuota(ownerId, granteeId, TRANSFER_LIMIT_BYTES);
   } catch (err) {
     console.warn("Storage quota transfer failed during share:", err.message);
-    // You could throw `err` if you want it to revert/block sharing completely,
-    // but typically we let the share succeed and just log the quota error
-    // for this prototype if it's a minor addition. If it must block sharing:
     throw err; 
   }
 
@@ -122,13 +126,13 @@ export async function shareFileWithUser(ownerId, fileId, username, role, encrypt
     }
   }
 
-  return { encryptedKeyTxHash };
+  return { encryptedKeyTxHash, expiresAt };
 }
 
 /**
  * Share all files in the owner's drive with another user.
  */
-export async function shareDriveWithUser(ownerId, username, role, keyShares = {}) {
+export async function shareDriveWithUser(ownerId, username, role, keyShares = {}, expiresInHours = null) {
   const normalizedRole = role === "editor" ? "editor" : "viewer";
 
   const targetUser = await findUserByUsernameOrWallet(username.trim());
@@ -150,7 +154,7 @@ export async function shareDriveWithUser(ownerId, username, role, keyShares = {}
 
   for (const f of ownedFiles) {
     const encryptedKey = keyShares?.[String(f.id)] || null;
-    await shareFileWithUser(ownerId, f.id, username, normalizedRole, encryptedKey);
+    await shareFileWithUser(ownerId, f.id, username, normalizedRole, encryptedKey, expiresInHours);
   }
 }
 

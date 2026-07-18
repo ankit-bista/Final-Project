@@ -157,11 +157,21 @@ export function RenameDialog({
 // ShareDialog
 // ─────────────────────────────────────────
 
+const EXPIRY_OPTIONS = [
+  { label: 'No time limit', value: 'none' },
+  { label: '1 hour', value: '1' },
+  { label: '6 hours', value: '6' },
+  { label: '12 hours', value: '12' },
+  { label: '24 hours (1 day)', value: '24' },
+  { label: '3 days', value: '72' },
+  { label: '7 days', value: '168' },
+]
+
 interface ShareDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   itemName?: string
-  onShare: (target: string, role: 'viewer' | 'editor', options?: { skipUncached?: boolean }) => Promise<void>
+  onShare: (target: string, role: 'viewer' | 'editor', options?: { skipUncached?: boolean; expiresInHours?: number | null }) => Promise<void>
   progressLabel?: string
   progressPercent?: number
 }
@@ -177,6 +187,7 @@ export function ShareDialog({
   const [username, setUsername] = useState('')
   const [role, setRole] = useState<'viewer' | 'editor'>('viewer')
   const [skipUncached, setSkipUncached] = useState(true)
+  const [expiryHours, setExpiryHours] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -186,13 +197,16 @@ export function ShareDialog({
       return
     }
 
+    const expiresInHours = expiryHours && expiryHours !== 'none' ? Number(expiryHours) : null
+
     try {
       setLoading(true)
       setError('')
-      await onShare(username.trim(), role, { skipUncached })
+      await onShare(username.trim(), role, { skipUncached, expiresInHours })
       onOpenChange(false)
       setUsername('')
       setRole('viewer')
+      setExpiryHours('none')
     } catch (err: any) {
       setError(err.response?.data || err.message || 'Failed to share file')
     } finally {
@@ -200,30 +214,32 @@ export function ShareDialog({
     }
   }
 
+  const selectedExpiry = EXPIRY_OPTIONS.find((o) => o.value === expiryHours)
+  const hasExpiry = Boolean(expiryHours) && expiryHours !== 'none'
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[440px]">
         <DialogHeader>
           <DialogTitle>Share Drive</DialogTitle>
           <DialogDescription>
             Grant access to your whole drive (all your files) to another user or wallet address.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="share-username" className="text-right">User</Label>
+        <div className="flex flex-col gap-4 py-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="share-username">User or Wallet Address</Label>
             <Input
               id="share-username"
-              placeholder="Username or 0x..."
-              className="col-span-3"
+              placeholder="Enter username or 0x..."
               value={username}
               onChange={(e) => setUsername(e.target.value)}
             />
           </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="share-role" className="text-right">Role</Label>
-            <Select value={role} onValueChange={setRole}>
-              <SelectTrigger className="col-span-3">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="share-role">Role</Label>
+            <Select value={role} onValueChange={(v: string) => setRole(v as 'viewer' | 'editor')}>
+              <SelectTrigger id="share-role">
                 <SelectValue placeholder="Select a role" />
               </SelectTrigger>
               <SelectContent>
@@ -232,6 +248,35 @@ export function ShareDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {/* Expiry Picker */}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="share-expiry">Auto-delete after</Label>
+            <Select value={expiryHours} onValueChange={setExpiryHours}>
+              <SelectTrigger id="share-expiry">
+                <SelectValue placeholder="No time limit" />
+              </SelectTrigger>
+              <SelectContent>
+                {EXPIRY_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value || '__none'} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Expiry Warning Banner */}
+          {hasExpiry && (
+            <div className="col-span-4 rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
+              <span className="mt-0.5 text-base leading-none">⚠️</span>
+              <span>
+                <strong>File will be permanently deleted</strong> after{' '}
+                <strong>{selectedExpiry?.label}</strong>. The file and all its shares will be removed from the system. This cannot be undone.
+              </span>
+            </div>
+          )}
+
           <div className="rounded-md border border-border p-3">
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -268,13 +313,17 @@ export function ShareDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             Cancel
           </Button>
-          <Button onClick={handleShare} disabled={loading || !username.trim()}>
+          <Button
+            onClick={handleShare}
+            disabled={loading || !username.trim()}
+            variant={hasExpiry ? 'destructive' : 'default'}
+          >
             {loading ? (
               <span className="inline-flex items-center gap-2">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
                 Sharing...
               </span>
-            ) : 'Share'}
+            ) : hasExpiry ? 'Share & Schedule Delete' : 'Share'}
           </Button>
         </DialogFooter>
       </DialogContent>

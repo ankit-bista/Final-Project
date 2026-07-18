@@ -13,6 +13,7 @@ import {
   setDriveQuotaUsed,
   sumSizeBytesByDrive,
   updateDriveQuotaLimit,
+  updateDriveName,
   upsertDriveMember,
 } from "./models/index.js";
 import { transferQuota } from "./quotaService.js";
@@ -179,4 +180,18 @@ export async function deleteDriveByAdmin({ driveId, actorUserId }) {
     throw err;
   }
   return deleteDriveCascade(driveId);
+}
+
+export async function renameDriveForUser({ driveId, actorUserId, name }) {
+  const { drive } = await requireDriveRole(driveId, actorUserId, ["admin"]);
+  await updateDriveName(driveId, name);
+  await createDriveActivityLog({
+    driveId,
+    actorUserId,
+    action: "drive_renamed",
+    targetType: "drive",
+    targetId: driveId,
+    metadata: { name },
+  });
+  return true;
 }
